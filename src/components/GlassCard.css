@@ -1,0 +1,90 @@
+/* ============================================================
+   GlassCard — Glassmorphism card wrapper
+   ============================================================ */
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  transition: transform var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+/* --- Variants --- */
+.glass-card--strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-color: var(--glass-border-strong);
+}
+
+.glass-card--gradient {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: none;
+}
+
+.glass-card--gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(77, 124, 255, 0.4),
+    rgba(139, 92, 246, 0.4),
+    rgba(77, 124, 255, 0.1)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* --- Padding sizes --- */
+.glass-card--pad-sm {
+  padding: var(--space-sm);
+}
+
+.glass-card--pad-md {
+  padding: var(--space-md);
+}
+
+.glass-card--pad-lg {
+  padding: var(--space-lg);
+}
+
+/* --- Clickable --- */
+.glass-card--clickable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.glass-card--clickable:active {
+  transform: scale(0.98);
+}
+
+/* --- Animate entrance --- */
+.glass-card--animate {
+  animation: glassCardEnter var(--duration-slow) var(--ease-out) forwards;
+  opacity: 0;
+}
+
+@keyframes glassCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

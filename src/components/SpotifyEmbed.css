@@ -1,0 +1,66 @@
+/* ============================================================
+   SpotifyEmbed — Spotify playlist embed or compact link
+   ============================================================ */
+
+.spotify-embed {
+  width: 100%;
+}
+
+/* --- Full iframe embed --- */
+.spotify-embed__iframe-wrap {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+.spotify-embed__iframe {
+  display: block;
+  width: 100%;
+  height: 352px;
+  border: none;
+  border-radius: var(--radius-lg);
+}
+
+/* --- Compact link button --- */
+.spotify-embed__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spotify-embed__link:hover {
+  background: var(--glass-bg-strong);
+  border-color: #1DB954;
+  box-shadow: 0 0 16px rgba(29, 185, 84, 0.2);
+}
+
+.spotify-embed__link:active {
+  transform: scale(0.97);
+}
+
+.spotify-embed__icon {
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.spotify-embed__spotify-logo {
+  width: 20px;
+  height: 20px;
+  fill: #1DB954;
+}

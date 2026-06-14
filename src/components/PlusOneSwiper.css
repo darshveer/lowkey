@@ -1,0 +1,172 @@
+/* ============================================================
+   PlusOneSwiper — Tinder-style swipe card for +1 requests
+   ============================================================ */
+
+.plus-one-swiper {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+}
+
+/* --- Card --- */
+.plus-one-swiper__card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  animation: swiperCardEnter 0.35s var(--ease-bounce) forwards;
+}
+
+/* --- Slide-out animations --- */
+.plus-one-swiper__card--exit-left {
+  animation: swiperExitLeft 0.35s var(--ease-out) forwards;
+}
+
+.plus-one-swiper__card--exit-right {
+  animation: swiperExitRight 0.35s var(--ease-out) forwards;
+}
+
+@keyframes swiperCardEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes swiperExitLeft {
+  to {
+    opacity: 0;
+    transform: translateX(-120%) rotate(-12deg);
+  }
+}
+
+@keyframes swiperExitRight {
+  to {
+    opacity: 0;
+    transform: translateX(120%) rotate(12deg);
+  }
+}
+
+/* --- Guest info --- */
+.plus-one-swiper__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  text-align: center;
+}
+
+.plus-one-swiper__guest-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.plus-one-swiper__plus-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.plus-one-swiper__plus-name {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* --- Action buttons --- */
+.plus-one-swiper__actions {
+  display: flex;
+  gap: var(--space-xl);
+  align-items: center;
+}
+
+.plus-one-swiper__btn {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--duration-fast) var(--ease-bounce),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.plus-one-swiper__btn:active {
+  transform: scale(0.9);
+}
+
+.plus-one-swiper__btn--deny {
+  background: rgba(255, 0, 127, 0.15);
+  color: var(--neon-pink);
+  border: 1px solid rgba(255, 0, 127, 0.25);
+}
+
+.plus-one-swiper__btn--deny:hover {
+  box-shadow: 0 0 20px rgba(255, 0, 127, 0.3);
+}
+
+.plus-one-swiper__btn--approve {
+  background: rgba(204, 255, 0, 0.15);
+  color: var(--neon-lime);
+  border: 1px solid rgba(204, 255, 0, 0.25);
+}
+
+.plus-one-swiper__btn--approve:hover {
+  box-shadow: 0 0 20px rgba(204, 255, 0, 0.3);
+}
+
+/* --- Empty state --- */
+.plus-one-swiper__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl) var(--space-lg);
+  text-align: center;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+.plus-one-swiper__empty-icon {
+  font-size: var(--text-3xl);
+  line-height: 1;
+}
+
+.plus-one-swiper__empty-text {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* --- Counter badge --- */
+.plus-one-swiper__counter {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+}

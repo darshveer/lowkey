@@ -1,0 +1,83 @@
+/* ============================================================
+   AvatarStack — Overlapping circular avatars
+   ============================================================ */
+
+.avatar-stack {
+  display: flex;
+  align-items: center;
+}
+
+.avatar-stack__list {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+}
+
+/* --- Avatar circle --- */
+.avatar-stack__circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-obsidian);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Overlap — pull subsequent avatars left */
+.avatar-stack__circle + .avatar-stack__circle,
+.avatar-stack__circle + .avatar-stack__overflow {
+  margin-left: -10px;
+}
+
+/* --- Sizes --- */
+.avatar-stack--sm .avatar-stack__circle {
+  width: 32px;
+  height: 32px;
+  font-size: var(--text-xs);
+}
+
+.avatar-stack--sm .avatar-stack__circle + .avatar-stack__circle,
+.avatar-stack--sm .avatar-stack__circle + .avatar-stack__overflow {
+  margin-left: -8px;
+}
+
+.avatar-stack--md .avatar-stack__circle {
+  width: 40px;
+  height: 40px;
+  font-size: var(--text-sm);
+}
+
+/* --- Overflow badge --- */
+.avatar-stack__overflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-obsidian);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-left: -10px;
+  position: relative;
+}
+
+.avatar-stack--sm .avatar-stack__overflow {
+  width: 32px;
+  height: 32px;
+  font-size: var(--text-xs);
+  margin-left: -8px;
+}
+
+.avatar-stack--md .avatar-stack__overflow {
+  width: 40px;
+  height: 40px;
+  font-size: var(--text-xs);
+}

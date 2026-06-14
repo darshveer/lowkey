@@ -1,0 +1,89 @@
+/* ============================================================
+   UPIQRCode — Dynamic UPI QR code display with pay button
+   ============================================================ */
+
+.upi-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+.upi-qr__image-wrap {
+  position: relative;
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+}
+
+.upi-qr__image {
+  width: 200px;
+  height: 200px;
+  display: block;
+  border-radius: var(--radius-sm);
+}
+
+.upi-qr__loading {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.upi-qr__loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid var(--glass-border-strong);
+  border-top-color: var(--neon-purple);
+  border-radius: var(--radius-full);
+  animation: spin 0.7s linear infinite;
+}
+
+.upi-qr__details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  text-align: center;
+}
+
+.upi-qr__amount {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.upi-qr__upi-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.upi-qr__note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  max-width: 240px;
+}
+
+.upi-qr__action {
+  width: 100%;
+  max-width: 260px;
+}
+
+.upi-qr__error {
+  color: var(--neon-pink);
+  font-size: var(--text-sm);
+  text-align: center;
+}

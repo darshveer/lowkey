@@ -1,0 +1,84 @@
+/* ============================================================
+   PollSelector — Horizontal pill selector for polls
+   ============================================================ */
+
+.poll-selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.poll-selector__label {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.poll-selector__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.poll-selector__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-secondary);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.poll-selector__pill:active {
+  transform: scale(0.95);
+}
+
+/* --- Selected states per accent --- */
+.poll-selector__pill--selected {
+  color: #fff;
+  border-color: transparent;
+  animation: pillBounce 0.4s var(--ease-bounce);
+}
+
+.poll-selector__pill--selected.poll-selector__pill--purple {
+  background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
+}
+
+.poll-selector__pill--selected.poll-selector__pill--pink {
+  background: linear-gradient(135deg, #FF007F, #E6006E);
+  box-shadow: 0 0 12px rgba(255, 0, 127, 0.35);
+}
+
+.poll-selector__pill--selected.poll-selector__pill--lime {
+  background: linear-gradient(135deg, #CCFF00, #99CC00);
+  color: var(--text-inverse);
+  box-shadow: 0 0 12px rgba(204, 255, 0, 0.3);
+}
+
+.poll-selector__emoji {
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+@keyframes pillBounce {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.08); }
+  70% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}

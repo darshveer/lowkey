@@ -1,0 +1,504 @@
+/* ============================================================
+   GuestInvite — THE star invite page for guests
+   ============================================================ */
+
+/* ---- Hero Section ---- */
+.invite-hero {
+  position: relative;
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-3xl) var(--space-md) var(--space-2xl);
+  margin: calc(-1 * var(--space-md));
+  margin-bottom: 0;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  overflow: hidden;
+}
+
+.invite-hero__content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  animation: fadeInUp 0.8s var(--ease-out) both;
+}
+
+/* Floating orbs */
+.invite-hero__orb {
+  position: absolute;
+  border-radius: var(--radius-full);
+  filter: blur(60px);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.invite-hero__orb--1 {
+  width: 200px;
+  height: 200px;
+  background: var(--neon-purple);
+  top: 10%;
+  left: -15%;
+  animation: invite-float 6s ease-in-out infinite;
+}
+
+.invite-hero__orb--2 {
+  width: 150px;
+  height: 150px;
+  background: var(--neon-pink);
+  top: 30%;
+  right: -10%;
+  animation: invite-float 7s ease-in-out infinite 1.5s;
+}
+
+.invite-hero__orb--3 {
+  width: 120px;
+  height: 120px;
+  background: var(--neon-blue);
+  bottom: 15%;
+  left: 10%;
+  animation: invite-float 8s ease-in-out infinite 3s;
+}
+
+.invite-hero__orb--4 {
+  width: 100px;
+  height: 100px;
+  background: var(--neon-lime);
+  bottom: 25%;
+  right: 5%;
+  opacity: 0.25;
+  animation: invite-float 5s ease-in-out infinite 2s;
+}
+
+@keyframes invite-float {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  25% { transform: translateY(-15px) translateX(8px); }
+  50% { transform: translateY(-25px) translateX(-5px); }
+  75% { transform: translateY(-10px) translateX(12px); }
+}
+
+.invite-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 10vw, 4rem);
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+}
+
+.invite-hero__tagline {
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  font-style: italic;
+  max-width: 320px;
+}
+
+.invite-hero__badges {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.invite-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* ---- Body Sections ---- */
+.invite-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding-top: var(--space-xl);
+  padding-bottom: var(--space-3xl);
+}
+
+.invite-section {
+  opacity: 0;
+  animation: fadeInUp 0.6s var(--ease-out) forwards;
+}
+
+.invite-section:nth-child(1) { animation-delay: 0.1s; }
+.invite-section:nth-child(2) { animation-delay: 0.2s; }
+.invite-section:nth-child(3) { animation-delay: 0.3s; }
+.invite-section:nth-child(4) { animation-delay: 0.4s; }
+.invite-section:nth-child(5) { animation-delay: 0.5s; }
+.invite-section:nth-child(6) { animation-delay: 0.6s; }
+.invite-section:nth-child(7) { animation-delay: 0.7s; }
+.invite-section:nth-child(8) { animation-delay: 0.8s; }
+
+.invite-section__title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
+  letter-spacing: -0.02em;
+}
+
+/* ---- Host Badge ---- */
+.invite-host {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.invite-host__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.invite-host__text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.invite-host__name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---- Who's Going ---- */
+.invite-going {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.invite-going__stats {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.invite-going__stats span {
+  color: var(--neon-lime);
+}
+
+/* ---- Spotify Section ---- */
+.invite-spotify {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.invite-spotify__cta {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: center;
+  font-weight: 500;
+}
+
+/* ---- Polls Section ---- */
+.invite-polls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* ---- Plus One Section ---- */
+.invite-plusone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.invite-plusone__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  cursor: pointer;
+}
+
+.invite-plusone__toggle-label {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.invite-plusone__switch {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  background: var(--glass-bg-strong);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  transition: background var(--duration-normal) var(--ease-out);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.invite-plusone__switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: var(--text-secondary);
+  border-radius: var(--radius-full);
+  transition: transform var(--duration-normal) var(--ease-bounce),
+              background var(--duration-normal) var(--ease-out);
+}
+
+.invite-plusone__switch--active {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: var(--neon-purple);
+}
+
+.invite-plusone__switch--active::after {
+  transform: translateX(20px);
+  background: var(--neon-purple);
+}
+
+.invite-plusone__input-wrap {
+  padding: 0 var(--space-lg) var(--space-md);
+  animation: fadeInUp 0.3s var(--ease-out) both;
+}
+
+.invite-plusone__input {
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  transition: border-color var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.invite-plusone__input:focus {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+  outline: none;
+}
+
+.invite-plusone__hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 var(--space-lg);
+  font-style: italic;
+}
+
+/* ---- RSVP Section ---- */
+.invite-rsvp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-xl) 0;
+}
+
+.invite-rsvp__input {
+  width: 100%;
+  padding: var(--space-lg);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: -0.02em;
+  transition: border-color var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.invite-rsvp__input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.invite-rsvp__input:focus {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+  outline: none;
+}
+
+/* Massive RSVP CTA button */
+.invite-rsvp__cta {
+  position: relative;
+  width: 100%;
+  padding: var(--space-lg) var(--space-xl);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 40%, #6D28D9 100%);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: -0.01em;
+  animation: invite-glowPulse 2s ease-in-out infinite;
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.invite-rsvp__cta:active {
+  transform: scale(0.96);
+}
+
+.invite-rsvp__cta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  animation: none;
+  box-shadow: none;
+}
+
+@keyframes invite-glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5),
+                0 0 60px rgba(139, 92, 246, 0.2),
+                0 0 100px rgba(139, 92, 246, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.7),
+                0 0 80px rgba(139, 92, 246, 0.3),
+                0 0 120px rgba(139, 92, 246, 0.12);
+  }
+}
+
+/* RSVP success state */
+.invite-rsvp__cta--success {
+  background: linear-gradient(135deg, #CCFF00 0%, #88FF00 100%);
+  color: var(--text-inverse);
+  animation: invite-bounceIn 0.6s var(--ease-bounce) both;
+  box-shadow: 0 0 24px rgba(204, 255, 0, 0.4),
+              0 0 60px rgba(204, 255, 0, 0.15);
+}
+
+@keyframes invite-bounceIn {
+  0% { transform: scale(0.85); }
+  40% { transform: scale(1.06); }
+  60% { transform: scale(0.97); }
+  80% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Confetti dots */
+.invite-confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--z-toast);
+  overflow: hidden;
+}
+
+.invite-confetti__dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  opacity: 0;
+  animation: invite-confettiFall 1.4s var(--ease-out) forwards;
+}
+
+@keyframes invite-confettiFall {
+  0% {
+    opacity: 1;
+    transform: translateY(-20px) scale(0);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100vh) scale(0.5);
+  }
+}
+
+/* ---- Success Toast ---- */
+.invite-toast {
+  position: fixed;
+  bottom: var(--space-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-md) var(--space-xl);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--neon-lime);
+  z-index: var(--z-toast);
+  animation: invite-toastIn 0.5s var(--ease-bounce) both;
+  white-space: nowrap;
+}
+
+@keyframes invite-toastIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(30px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* ---- Footer ---- */
+.invite-footer {
+  text-align: center;
+  padding: var(--space-xl) 0 var(--space-2xl);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  letter-spacing: 0.02em;
+}
+
+/* ---- Divider ---- */
+.invite-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-border-strong), transparent);
+  border: none;
+  margin: var(--space-sm) 0;
+}

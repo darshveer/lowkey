@@ -1,0 +1,156 @@
+/* ============================================================
+   PhotoGrid — Film-roll style horizontal photo grid
+   ============================================================ */
+
+.photo-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.photo-grid__scroll {
+  display: flex;
+  gap: var(--space-md);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--space-sm);
+  scrollbar-width: none;
+}
+
+.photo-grid__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- Film frame --- */
+.photo-grid__frame {
+  flex-shrink: 0;
+  width: 220px;
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  scroll-snap-align: start;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+/* Grain overlay */
+.photo-grid__frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.015) 2px,
+    rgba(255, 255, 255, 0.015) 4px
+  );
+  pointer-events: none;
+  animation: filmGrain 3s ease-in-out infinite;
+}
+
+.photo-grid__image {
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-grid__meta {
+  padding: var(--space-sm) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.photo-grid__caption {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.photo-grid__timestamp {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--neon-lime);
+  opacity: 0.7;
+  letter-spacing: 0.1em;
+}
+
+/* --- Upload button --- */
+.photo-grid__upload {
+  flex-shrink: 0;
+  width: 220px;
+  height: 316px; /* match frame height approx */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--glass-border-strong);
+  background: var(--glass-bg);
+  cursor: pointer;
+  transition: background var(--duration-normal) var(--ease-out),
+              border-color var(--duration-normal) var(--ease-out);
+  scroll-snap-align: start;
+}
+
+.photo-grid__upload:active {
+  transform: scale(0.97);
+}
+
+.photo-grid__upload:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--neon-purple);
+}
+
+.photo-grid__upload-icon {
+  font-size: var(--text-3xl);
+  line-height: 1;
+}
+
+.photo-grid__upload-text {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.photo-grid__upload-input {
+  display: none;
+}
+
+/* --- Locked state --- */
+.photo-grid__locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl) var(--space-lg);
+  text-align: center;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+.photo-grid__locked-icon {
+  font-size: var(--text-4xl);
+  line-height: 1;
+}
+
+.photo-grid__locked-text {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* film grain animation is defined globally in index.css */
