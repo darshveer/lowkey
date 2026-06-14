@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import GlowButton from '../components/GlowButton';
 import { generateId, shareLink, shareToWhatsApp } from '../utils/helpers';
-import { saveEvent } from '../utils/storage';
-import { PARTY_THEMES } from '../data/mockData';
+import { saveEvent, getCurrentUser } from '../utils/storage';
+import { DISCOVERY_CITIES, PARTY_THEMES } from '../data/mockData';
 import './CreatorStudio.css';
 
 /** Step labels for the progress indicator */
@@ -32,11 +32,20 @@ export default function CreatorStudio() {
   const [date, setDate] = useState('');
   const [timeStart, setTimeStart] = useState('');
   const [timeEnd, setTimeEnd] = useState('');
+  const [city, setCity] = useState('Bengaluru');
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [theme, setTheme] = useState('neon');
   const [spotifyUrl, setSpotifyUrl] = useState('');
   const [upiId, setUpiId] = useState('');
+  const [coverCharge, setCoverCharge] = useState('');
+  const [capacity, setCapacity] = useState('');
+  const [hasPersonalDj, setHasPersonalDj] = useState(false);
+  const [djName, setDjName] = useState('');
+  const [djGenre, setDjGenre] = useState('');
+  const [djProfileUrl, setDjProfileUrl] = useState('');
+  const [djInstagram, setDjInstagram] = useState('');
+  const [containsAlcohol, setContainsAlcohol] = useState(false);
 
   // Generated on create
   const [eventId, setEventId] = useState('');
@@ -89,23 +98,35 @@ export default function CreatorStudio() {
   /** Create the party and navigate to dashboard */
   const handleCreate = () => {
     const id = eventId || generateId();
+    const currentUser = getCurrentUser();
 
     const event = {
       id,
-      host_id: 'local_host',
-      host_name: 'You',
+      host_id: currentUser ? currentUser.id : 'local_host',
+      host_name: currentUser ? currentUser.name : 'You',
       name: name.trim(),
       tagline: tagline.trim(),
       date,
       time_start: timeStart,
       time_end: timeEnd,
+      city,
       location_name: locationName.trim(),
       location_address: locationAddress.trim(),
       theme,
       spotify_playlist_url: spotifyUrl.trim() || null,
       upi_id: upiId.trim() || null,
+      cover_charge: coverCharge ? Number(coverCharge) : 0,
+      capacity: capacity ? Number(capacity) : null,
+      discoverable: true,
+      vibe_tags: [city, hasPersonalDj ? 'DJ set' : 'playlist', containsAlcohol ? 'BYOB' : ''].filter(Boolean),
+      has_personal_dj: hasPersonalDj,
+      dj_name: hasPersonalDj ? djName.trim() : '',
+      dj_genre: hasPersonalDj ? djGenre.trim() : '',
+      dj_profile_url: hasPersonalDj ? djProfileUrl.trim() : '',
+      dj_instagram: hasPersonalDj ? djInstagram.trim() : '',
       status: 'live',
       photo_dump_unlocked: false,
+      contains_alcohol: containsAlcohol,
     };
 
     saveEvent(event);
@@ -204,6 +225,19 @@ export default function CreatorStudio() {
       </div>
 
       <div className="creator-field">
+        <label className="creator-field__label">City</label>
+        <select
+          className="input-glass"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        >
+          {DISCOVERY_CITIES.filter(c => c !== 'All').map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="creator-field">
         <label className="creator-field__label">Spot</label>
         <input
           className="input-glass"
@@ -260,11 +294,103 @@ export default function CreatorStudio() {
           />
         </div>
       </div>
+
+      <div className="creator-dj-card">
+        <button
+          className="creator-dj-card__toggle"
+          type="button"
+          onClick={() => setHasPersonalDj(!hasPersonalDj)}
+          aria-pressed={hasPersonalDj}
+        >
+          <span>
+            <strong>Personal DJ</strong>
+            <small>Show guests who is playing the set.</small>
+          </span>
+          <span className={`creator-dj-card__switch${hasPersonalDj ? ' creator-dj-card__switch--active' : ''}`} />
+        </button>
+
+        {hasPersonalDj && (
+          <div className="creator-dj-card__fields">
+            <input
+              className="input-glass"
+              type="text"
+              placeholder="DJ name"
+              value={djName}
+              onChange={(e) => setDjName(e.target.value)}
+              maxLength={80}
+            />
+            <input
+              className="input-glass"
+              type="text"
+              placeholder="genre or vibe: Afro house, Bolly-tech..."
+              value={djGenre}
+              onChange={(e) => setDjGenre(e.target.value)}
+              maxLength={120}
+            />
+            <input
+              className="input-glass"
+              type="url"
+              placeholder="profile link, SoundCloud, Spotify, website"
+              value={djProfileUrl}
+              onChange={(e) => setDjProfileUrl(e.target.value)}
+            />
+            <input
+              className="input-glass"
+              type="url"
+              placeholder="Instagram link"
+              value={djInstagram}
+              onChange={(e) => setDjInstagram(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="creator-dj-card" style={{ marginTop: '16px' }}>
+        <button
+          className="creator-dj-card__toggle"
+          type="button"
+          onClick={() => setContainsAlcohol(!containsAlcohol)}
+          aria-pressed={containsAlcohol}
+        >
+          <span>
+            <strong>Contains Alcohol / BYOB</strong>
+            <small>Require age verification (21+) for guests who RSVP</small>
+          </span>
+          <span className={`creator-dj-card__switch${containsAlcohol ? ' creator-dj-card__switch--active' : ''}`} />
+        </button>
+      </div>
     </div>
   );
 
   const renderKitty = () => (
     <div className="creator-fields">
+      <div className="creator-time-row">
+        <div className="creator-field">
+          <label className="creator-field__label">Cover charge</label>
+          <input
+            className="input-glass"
+            type="number"
+            min="0"
+            inputMode="numeric"
+            placeholder="0"
+            value={coverCharge}
+            onChange={(e) => setCoverCharge(e.target.value)}
+          />
+        </div>
+        <div className="creator-field">
+          <label className="creator-field__label">Capacity</label>
+          <input
+            className="input-glass"
+            type="number"
+            min="1"
+            inputMode="numeric"
+            placeholder="40"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+          />
+        </div>
+      </div>
+
       <div className="creator-field">
         <label className="creator-field__label">Your UPI ID</label>
         <input
@@ -309,6 +435,9 @@ export default function CreatorStudio() {
           {locationName && (
             <div className="creator-preview__location">📍 {locationName}</div>
           )}
+          {hasPersonalDj && djName && (
+            <div className="creator-preview__dj">DJ {djName}</div>
+          )}
         </div>
       </GlassCard>
 
@@ -338,7 +467,7 @@ export default function CreatorStudio() {
           onClick={handleCreate}
           fullWidth
         >
-          Create Party 🎉
+          Create Party
         </GlowButton>
       </div>
     </div>
@@ -364,7 +493,7 @@ export default function CreatorStudio() {
     <div className="creator-page">
       {/* Top bar */}
       <div className="creator-topbar">
-        <span className="creator-topbar__logo">lowkey</span>
+        <span className="creator-topbar__logo brand-cursive text-gradient">lowkey</span>
         <button
           className="creator-topbar__close"
           onClick={() => navigate('/')}

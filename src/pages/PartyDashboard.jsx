@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getEvent, getRSVPs, getExpenses, addExpense, getPhotos, addPhoto } from '../utils/storage';
 import { generateId, formatDate, formatTime, formatINR, getDirectionsUrl, getInitials, getAvatarGradient } from '../utils/helpers';
@@ -9,7 +9,6 @@ import GlowButton from '../components/GlowButton';
 import CountdownTimer from '../components/CountdownTimer';
 import UPIQRCode from '../components/UPIQRCode';
 import PhotoGrid from '../components/PhotoGrid';
-import AvatarStack from '../components/AvatarStack';
 import PlusOneSwiper from '../components/PlusOneSwiper';
 import './PartyDashboard.css';
 
@@ -75,10 +74,19 @@ const TABS = [
 export default function PartyDashboard() {
   const { eventId } = useParams();
   const [activeTab, setActiveTab] = useState('overview');
-  const [event, setEvent] = useState(null);
-  const [rsvps, setRsvps] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [photos, setPhotos] = useState([]);
+  const [event] = useState(() => getEvent(eventId) || MOCK_EVENT_ACTIVE);
+  const [rsvps, setRsvps] = useState(() => {
+    const storedRSVPs = getRSVPs(eventId);
+    return storedRSVPs.length ? storedRSVPs : MOCK_RSVPS;
+  });
+  const [expenses, setExpenses] = useState(() => {
+    const storedExpenses = getExpenses(eventId);
+    return storedExpenses.length ? storedExpenses : MOCK_EXPENSES;
+  });
+  const [photos, setPhotos] = useState(() => {
+    const storedPhotos = getPhotos(eventId);
+    return storedPhotos.length ? storedPhotos : [];
+  });
 
   /* Expense form */
   const [expenseDesc, setExpenseDesc] = useState('');
@@ -91,19 +99,6 @@ export default function PartyDashboard() {
 
   /* Photo upload ref */
   const fileInputRef = useRef(null);
-
-  // ---- Load data ----
-  useEffect(() => {
-    const storedEvent = getEvent(eventId);
-    const storedRSVPs = getRSVPs(eventId);
-    const storedExpenses = getExpenses(eventId);
-    const storedPhotos = getPhotos(eventId);
-
-    setEvent(storedEvent || MOCK_EVENT_ACTIVE);
-    setRsvps(storedRSVPs.length ? storedRSVPs : MOCK_RSVPS);
-    setExpenses(storedExpenses.length ? storedExpenses : MOCK_EXPENSES);
-    setPhotos(storedPhotos.length ? storedPhotos : []);
-  }, [eventId]);
 
   // ---- Toast helper ----
   function showToast(message) {
@@ -247,223 +242,266 @@ export default function PartyDashboard() {
         {/* ---- TAB 1: OVERVIEW ---- */}
         {activeTab === 'overview' && (
           <div className="dashboard-tab-panel" key="overview">
-            {/* Countdown */}
-            <div className="dashboard-countdown-wrap">
-              {CountdownTimer ? (
-                <CountdownTimer targetDate={event.date} targetTime={event.time_start} />
-              ) : (
-                <Card className="dashboard-guest-list__card" style={{ textAlign: 'center', padding: '24px' }}>
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, fontFamily: 'var(--font-display)', fontWeight: 600 }}>
-                    Party starts in
-                  </p>
-                  <p style={{ fontSize: 'var(--text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 700, background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                    🔥 Soon™
-                  </p>
-                </Card>
+            <div className="dashboard-panel-col">
+              {/* Countdown */}
+              <div className="dashboard-countdown-wrap">
+                {CountdownTimer ? (
+                  <CountdownTimer targetDate={event.date} targetTime={event.time_start} />
+                ) : (
+                  <Card className="dashboard-guest-list__card" style={{ textAlign: 'center', padding: '24px' }}>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+                      Party starts in
+                    </p>
+                    <p style={{ fontSize: 'var(--text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 700, background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                      🔥 Soon™
+                    </p>
+                  </Card>
+                )}
+              </div>
+
+              {/* Party Brief */}
+              <Card className="dashboard-brief">
+                <div className="dashboard-brief__grid">
+                  <div>
+                    <span className="dashboard-brief__label">City</span>
+                    <strong>{event.city || 'India'}</strong>
+                  </div>
+                  <div>
+                    <span className="dashboard-brief__label">Cover</span>
+                    <strong>{event.cover_charge ? formatINR(event.cover_charge) : 'Free'}</strong>
+                  </div>
+                  <div>
+                    <span className="dashboard-brief__label">Capacity</span>
+                    <strong>{event.capacity || 'Open'}</strong>
+                  </div>
+                </div>
+                {event.has_personal_dj && event.dj_name && (
+                  <div className="dashboard-brief__dj">
+                    <span className="dashboard-brief__dj-mark">DJ</span>
+                    <div>
+                      <strong>{event.dj_name}</strong>
+                      {event.dj_genre && <span>{event.dj_genre}</span>}
+                    </div>
+                    <div className="dashboard-brief__dj-links">
+                      {event.dj_profile_url && (
+                        <a href={event.dj_profile_url} target="_blank" rel="noreferrer">Profile</a>
+                      )}
+                      {event.dj_instagram && (
+                        <a href={event.dj_instagram} target="_blank" rel="noreferrer">Instagram</a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Directions Button */}
+              {event.location_lat && event.location_lng && (
+                <div className="dashboard-directions-btn" style={{ marginTop: 'var(--space-lg)' }}>
+                  <Btn
+                    variant="blue"
+                    onClick={() => window.open(getDirectionsUrl(event.location_lat, event.location_lng), '_blank')}
+                  >
+                    Get Directions 📍
+                  </Btn>
+                </div>
               )}
             </div>
 
-            {/* Stats Row */}
-            <div className="dashboard-stats">
-              <div className="dashboard-stat-card">
-                <div className="dashboard-stat-card__number dashboard-stat-card__number--purple">
-                  {tallies.going}
-                </div>
-                <div className="dashboard-stat-card__label">Going</div>
-              </div>
-              <div className="dashboard-stat-card">
-                <div className="dashboard-stat-card__number dashboard-stat-card__number--pink">
-                  {tallies.nonveg}
-                </div>
-                <div className="dashboard-stat-card__label">Non-Veg</div>
-              </div>
-              <div className="dashboard-stat-card">
-                <div className="dashboard-stat-card__number dashboard-stat-card__number--lime">
-                  {tallies.byob}
-                </div>
-                <div className="dashboard-stat-card__label">BYOB</div>
-              </div>
-            </div>
-
-            {/* Guest List */}
-            <p className="dashboard-section-title">Guest List</p>
-            <Card className="dashboard-guest-list__card">
-              <div className="dashboard-guest-list">
-                {rsvps.map(rsvp => (
-                  <div className="dashboard-guest-row" key={rsvp.id}>
-                    <div
-                      className="dashboard-guest-row__avatar"
-                      style={{ background: getAvatarGradient(rsvp.guest_name) }}
-                    >
-                      {getInitials(rsvp.guest_name)}
-                    </div>
-                    <div className="dashboard-guest-row__info">
-                      <div className="dashboard-guest-row__name">{rsvp.guest_name}</div>
-                      <div className="dashboard-guest-row__badges">
-                        {rsvp.poll_food && (
-                          <span className="dashboard-poll-badge" title={rsvp.poll_food}>
-                            {FOOD_EMOJI[rsvp.poll_food]}
-                          </span>
-                        )}
-                        {rsvp.poll_drinks && (
-                          <span className="dashboard-poll-badge" title={rsvp.poll_drinks}>
-                            {DRINK_EMOJI[rsvp.poll_drinks]}
-                          </span>
-                        )}
-                        {rsvp.poll_staying && (
-                          <span className="dashboard-poll-badge" title={rsvp.poll_staying}>
-                            {STAY_EMOJI[rsvp.poll_staying]}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      className={`dashboard-guest-row__status dashboard-guest-row__status--${rsvp.status}`}
-                    >
-                      {rsvp.status}
-                    </span>
+            <div className="dashboard-panel-col">
+              {/* Stats Row */}
+              <div className="dashboard-stats">
+                <div className="dashboard-stat-card">
+                  <div className="dashboard-stat-card__number dashboard-stat-card__number--purple">
+                    {tallies.going}
                   </div>
-                ))}
+                  <div className="dashboard-stat-card__label">Going</div>
+                </div>
+                <div className="dashboard-stat-card">
+                  <div className="dashboard-stat-card__number dashboard-stat-card__number--pink">
+                    {tallies.nonveg}
+                  </div>
+                  <div className="dashboard-stat-card__label">Non-Veg</div>
+                </div>
+                <div className="dashboard-stat-card">
+                  <div className="dashboard-stat-card__number dashboard-stat-card__number--lime">
+                    {tallies.byob}
+                  </div>
+                  <div className="dashboard-stat-card__label">BYOB</div>
+                </div>
               </div>
-            </Card>
 
-            {/* Directions Button */}
-            {event.location_lat && event.location_lng && (
-              <div className="dashboard-directions-btn" style={{ marginTop: 'var(--space-lg)' }}>
-                <Btn
-                  variant="blue"
-                  onClick={() => window.open(getDirectionsUrl(event.location_lat, event.location_lng), '_blank')}
-                >
-                  Get Directions 📍
-                </Btn>
-              </div>
-            )}
+              {/* Guest List */}
+              <p className="dashboard-section-title">Guest List</p>
+              <Card className="dashboard-guest-list__card">
+                <div className="dashboard-guest-list">
+                  {rsvps.map(rsvp => (
+                    <div className="dashboard-guest-row" key={rsvp.id}>
+                      <div
+                        className="dashboard-guest-row__avatar"
+                        style={{ background: getAvatarGradient(rsvp.guest_name) }}
+                      >
+                        {getInitials(rsvp.guest_name)}
+                      </div>
+                      <div className="dashboard-guest-row__info">
+                        <div className="dashboard-guest-row__name">{rsvp.guest_name}</div>
+                        <div className="dashboard-guest-row__badges">
+                          {rsvp.poll_food && (
+                            <span className="dashboard-poll-badge" title={rsvp.poll_food}>
+                              {FOOD_EMOJI[rsvp.poll_food]}
+                            </span>
+                          )}
+                          {rsvp.poll_drinks && (
+                            <span className="dashboard-poll-badge" title={rsvp.poll_drinks}>
+                              {DRINK_EMOJI[rsvp.poll_drinks]}
+                            </span>
+                          )}
+                          {rsvp.poll_staying && (
+                            <span className="dashboard-poll-badge" title={rsvp.poll_staying}>
+                              {STAY_EMOJI[rsvp.poll_staying]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`dashboard-guest-row__status dashboard-guest-row__status--${rsvp.status}`}
+                      >
+                        {rsvp.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
           </div>
         )}
 
         {/* ---- TAB 2: KITTY 💰 ---- */}
         {activeTab === 'kitty' && (
           <div className="dashboard-tab-panel" key="kitty">
-            {/* Total */}
-            <div className="dashboard-kitty-total">
-              <div className="dashboard-kitty-total__label">Total Kitty</div>
-              <div className="dashboard-kitty-total__amount">{formatINR(totalExpenses)}</div>
-            </div>
-
-            {/* Expense List */}
-            <p className="dashboard-section-title">Expenses</p>
-            <div className="dashboard-expense-list">
-              {expenses.map(exp => (
-                <div className="dashboard-expense-item" key={exp.id}>
-                  <div className="dashboard-expense-item__info">
-                    <div className="dashboard-expense-item__desc">{exp.description}</div>
-                    <div className="dashboard-expense-item__by">Paid by {exp.paid_by}</div>
+            <div className="dashboard-panel-col">
+              {/* Expense List */}
+              <p className="dashboard-section-title">Expenses</p>
+              <div className="dashboard-expense-list">
+                {expenses.map(exp => (
+                  <div className="dashboard-expense-item" key={exp.id}>
+                    <div className="dashboard-expense-item__info">
+                      <div className="dashboard-expense-item__desc">{exp.description}</div>
+                      <div className="dashboard-expense-item__by">Paid by {exp.paid_by}</div>
+                    </div>
+                    <div className="dashboard-expense-item__amount">{formatINR(exp.amount)}</div>
                   </div>
-                  <div className="dashboard-expense-item__amount">{formatINR(exp.amount)}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add Expense */}
-            {!showAddExpense ? (
-              <div style={{ marginBottom: 'var(--space-lg)' }}>
-                <Btn variant="lime" onClick={() => setShowAddExpense(true)}>
-                  + Add Expense
-                </Btn>
+                ))}
               </div>
-            ) : (
-              <form className="dashboard-add-expense" onSubmit={handleAddExpense}>
-                <div className="dashboard-add-expense__title">Add Expense</div>
-                <div className="dashboard-add-expense__fields">
-                  <input
-                    className="dashboard-add-expense__input"
-                    type="text"
-                    placeholder="What was it for?"
-                    value={expenseDesc}
-                    onChange={e => setExpenseDesc(e.target.value)}
-                    autoFocus
-                  />
-                  <div className="dashboard-add-expense__amount-wrap">
-                    <span className="dashboard-add-expense__currency">₹</span>
+
+              {/* Add Expense */}
+              {!showAddExpense ? (
+                <div style={{ marginBottom: 'var(--space-lg)' }}>
+                  <Btn variant="lime" onClick={() => setShowAddExpense(true)}>
+                    + Add Expense
+                  </Btn>
+                </div>
+              ) : (
+                <form className="dashboard-add-expense" onSubmit={handleAddExpense}>
+                  <div className="dashboard-add-expense__title">Add Expense</div>
+                  <div className="dashboard-add-expense__fields">
                     <input
                       className="dashboard-add-expense__input"
-                      type="number"
-                      placeholder="0"
-                      min="0"
-                      value={expenseAmount}
-                      onChange={e => setExpenseAmount(e.target.value)}
+                      type="text"
+                      placeholder="What was it for?"
+                      value={expenseDesc}
+                      onChange={e => setExpenseDesc(e.target.value)}
+                      autoFocus
                     />
+                    <div className="dashboard-add-expense__amount-wrap">
+                      <span className="dashboard-add-expense__currency">₹</span>
+                      <input
+                        className="dashboard-add-expense__input"
+                        type="number"
+                        placeholder="0"
+                        min="0"
+                        value={expenseAmount}
+                        onChange={e => setExpenseAmount(e.target.value)}
+                      />
+                    </div>
+                    <div className="dashboard-add-expense__btn">
+                      <Btn variant="lime" type="submit">
+                        Add 💸
+                      </Btn>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddExpense(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 'var(--text-sm)',
+                        cursor: 'pointer',
+                        padding: '8px 0',
+                      }}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                  <div className="dashboard-add-expense__btn">
-                    <Btn variant="lime" type="submit">
-                      Add 💸
-                    </Btn>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddExpense(false)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 'var(--text-sm)',
-                      cursor: 'pointer',
-                      padding: '8px 0',
-                    }}
-                  >
-                    Cancel
-                  </button>
+                </form>
+              )}
+            </div>
+
+            <div className="dashboard-panel-col">
+              {/* Total */}
+              <div className="dashboard-kitty-total">
+                <div className="dashboard-kitty-total__label">Total Kitty</div>
+                <div className="dashboard-kitty-total__amount">{formatINR(totalExpenses)}</div>
+              </div>
+
+              {/* Split Calculator */}
+              <div className="dashboard-split">
+                <div className="dashboard-split__text">
+                  Split{' '}
+                  <span className="dashboard-split__highlight">{formatINR(totalExpenses)}</span>
+                  {' '}among {tallies.going} guests ={' '}
+                  <span className="dashboard-split__highlight">{formatINR(splitAmount)}</span>
+                  {' '}each
                 </div>
-              </form>
-            )}
 
-            {/* Split Calculator */}
-            <div className="dashboard-split">
-              <div className="dashboard-split__text">
-                Split{' '}
-                <span className="dashboard-split__highlight">{formatINR(totalExpenses)}</span>
-                {' '}among {tallies.going} guests ={' '}
-                <span className="dashboard-split__highlight">{formatINR(splitAmount)}</span>
-                {' '}each
-              </div>
+                <div className="dashboard-split__qr">
+                  {UPIQRCode ? (
+                    <UPIQRCode
+                      upiId={event.upi_id}
+                      payeeName={event.host_name}
+                      amount={splitAmount}
+                      note={`Split for ${event.name}`}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        background: 'rgba(255,255,255,0.04)',
+                        borderRadius: 'var(--radius-md)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 48,
+                      }}
+                    >
+                      📱
+                    </div>
+                  )}
+                </div>
 
-              <div className="dashboard-split__qr">
-                {UPIQRCode ? (
-                  <UPIQRCode
-                    vpa={event.upi_id}
-                    name={event.host_name}
-                    amount={splitAmount}
-                    note={`Split for ${event.name}`}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      background: 'rgba(255,255,255,0.04)',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 48,
+                <div className="dashboard-split__pay-btn">
+                  <Btn
+                    variant="pink"
+                    onClick={() => {
+                      const upiLink = `upi://pay?pa=${event.upi_id}&pn=${encodeURIComponent(event.host_name)}&am=${splitAmount}&cu=INR&tn=${encodeURIComponent(`Split for ${event.name}`)}`;
+                      window.location.href = upiLink;
                     }}
                   >
-                    📱
-                  </div>
-                )}
-              </div>
-
-              <div className="dashboard-split__pay-btn">
-                <Btn
-                  variant="pink"
-                  onClick={() => {
-                    const upiLink = `upi://pay?pa=${event.upi_id}&pn=${encodeURIComponent(event.host_name)}&am=${splitAmount}&cu=INR&tn=${encodeURIComponent(`Split for ${event.name}`)}`;
-                    window.location.href = upiLink;
-                  }}
-                >
-                  Pay via UPI 💳
-                </Btn>
+                    Pay via UPI 💳
+                  </Btn>
+                </div>
               </div>
             </div>
           </div>
@@ -472,7 +510,7 @@ export default function PartyDashboard() {
         {/* ---- TAB 3: CAMERA ROLL 📸 ---- */}
         {activeTab === 'camera' && (
           <div className="dashboard-tab-panel" key="camera">
-            <div className="dashboard-camera">
+            <div className="dashboard-panel-col">
               {/* Upload Zone */}
               <div
                 className="dashboard-upload-zone"
@@ -506,7 +544,9 @@ export default function PartyDashboard() {
                   </div>
                 </div>
               )}
+            </div>
 
+            <div className="dashboard-panel-col">
               {/* Photo Grid (component or fallback) */}
               {PhotoGrid && photos.length > 0 ? (
                 <PhotoGrid photos={photos} isLocked={isPhotoLocked} />

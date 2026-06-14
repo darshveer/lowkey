@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "vite preview --host 0.0.0.0",
+    "deploy:preview": "npm run build && npm run preview -- --host 0.0.0.0"
   },
   "dependencies": {
     "nanoid": "^5.1.11",

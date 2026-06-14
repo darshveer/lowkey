@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getCountdown } from '../utils/helpers.js';
 import './CountdownTimer.css';
 

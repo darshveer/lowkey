@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { generateUPIQR, initiateUPIPayment } from '../utils/upi.js';
 import { formatINR } from '../utils/helpers.js';
 import GlowButton from './GlowButton.jsx';
@@ -20,8 +20,6 @@ export default function UPIQRCode({ upiId, payeeName, amount, note }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     generateUPIQR({ vpa: upiId, name: payeeName, amount, note })
       .then((dataUrl) => {
@@ -30,7 +28,7 @@ export default function UPIQRCode({ upiId, payeeName, amount, note }) {
           setLoading(false);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (!cancelled) {
           setError('Failed to generate QR');
           setLoading(false);

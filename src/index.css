@@ -44,6 +44,7 @@
   /* Typography */
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Inter', sans-serif;
+  --font-cursive: 'Satisfy', cursive;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Font Sizes */
@@ -201,17 +202,37 @@ h6 { font-size: var(--text-lg); }
   background-clip: text;
 }
 
+.brand-cursive {
+  font-family: var(--font-cursive) !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
 /* ---- Layout Utilities ---- */
 .page {
   width: 100%;
-  max-width: 480px;
+  max-width: 500px;
   margin: 0 auto;
   padding: var(--space-md);
   min-height: 100dvh;
+  transition: max-width var(--duration-normal) var(--ease-out);
+}
+
+@media (min-width: 768px) {
+  .page {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page {
+    max-width: 1200px;
+  }
 }
 
 .page-wide {
-  max-width: 640px;
+  max-width: 1200px;
 }
 
 .stack {

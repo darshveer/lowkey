@@ -133,3 +133,78 @@ export function addPhoto(photo) {
   all.push({ ...photo, created_at: new Date().toISOString() });
   save('photos', all);
 }
+
+/**
+ * Get all users from storage
+ * @returns {Array}
+ */
+export function getUsers() {
+  return load('users', []);
+}
+
+/**
+ * Register a new user
+ * @param {Object} user
+ * @returns {Object} { success: boolean, error?: string, user?: Object }
+ */
+export function registerUser(user) {
+  const users = getUsers();
+  const normalizedEmail = user.email.toLowerCase().trim();
+  const normalizedUsername = user.username.toLowerCase().trim();
+  
+  const exists = users.find(u => u.email.toLowerCase().trim() === normalizedEmail || u.username.toLowerCase().trim() === normalizedUsername);
+  if (exists) {
+    return { success: false, error: 'Username or Email already exists' };
+  }
+
+  const newUser = {
+    ...user,
+    id: 'user_' + Math.random().toString(36).substring(2, 11),
+    created_at: new Date().toISOString()
+  };
+
+  users.push(newUser);
+  save('users', users);
+  
+  // Auto login on signup
+  save('session', newUser);
+  return { success: true, user: newUser };
+}
+
+/**
+ * Log in a user
+ * @param {string} emailOrUsername
+ * @param {string} password
+ * @returns {Object} { success: boolean, error?: string, user?: Object }
+ */
+export function loginUser(emailOrUsername, password) {
+  const users = getUsers();
+  const searchKey = emailOrUsername.toLowerCase().trim();
+  
+  const user = users.find(u => 
+    u.email.toLowerCase().trim() === searchKey || 
+    u.username.toLowerCase().trim() === searchKey
+  );
+
+  if (!user || user.password !== password) {
+    return { success: false, error: 'Invalid username/email or password' };
+  }
+
+  save('session', user);
+  return { success: true, user };
+}
+
+/**
+ * Get current logged in user session
+ * @returns {Object|null}
+ */
+export function getCurrentUser() {
+  return load('session', null);
+}
+
+/**
+ * Log out current user
+ */
+export function logoutUser() {
+  remove('session');
+}

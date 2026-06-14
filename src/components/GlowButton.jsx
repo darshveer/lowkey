@@ -1,4 +1,3 @@
-import React from 'react';
 import './GlowButton.css';
 
 /**
@@ -21,6 +20,7 @@ export default function GlowButton({
   fullWidth = false,
   disabled = false,
   loading = false,
+  type = 'button',
 }) {
   const classes = [
     'glow-button',
@@ -38,7 +38,7 @@ export default function GlowButton({
       className={classes}
       onClick={onClick}
       disabled={disabled || loading}
-      type="button"
+      type={type}
     >
       {loading && <span className="glow-button__spinner" aria-hidden="true" />}
       <span className="glow-button__label">{children}</span>

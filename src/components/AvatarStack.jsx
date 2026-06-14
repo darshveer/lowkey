@@ -1,4 +1,3 @@
-import React from 'react';
 import { getInitials, getAvatarGradient } from '../utils/helpers.js';
 import './AvatarStack.css';
 

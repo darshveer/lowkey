@@ -14,6 +14,14 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  transition: max-width var(--duration-normal) var(--ease-out);
+}
+
+@media (min-width: 768px) {
+  .creator-page {
+    max-width: 720px;
+    padding: var(--space-xl) var(--space-lg);
+  }
 }
 
 /* ---- Top bar ---- */
@@ -192,6 +200,23 @@
   color-scheme: dark;
 }
 
+.creator-page select.input-glass {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 52%,
+    calc(100% - 12px) 52%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.creator-page select.input-glass option {
+  background: var(--bg-obsidian);
+  color: var(--text-primary);
+}
+
 /* ---- Theme selector grid ---- */
 .creator-themes {
   display: grid;
@@ -279,6 +304,83 @@
   padding-left: 44px;
 }
 
+/* ---- Personal DJ ---- */
+.creator-dj-card {
+  overflow: hidden;
+  border: 1px solid rgba(77, 124, 255, 0.18);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(77, 124, 255, 0.12), rgba(255, 0, 127, 0.08)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.creator-dj-card__toggle {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  text-align: left;
+}
+
+.creator-dj-card__toggle strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.creator-dj-card__toggle small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.creator-dj-card__switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 50px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border-strong);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.creator-dj-card__switch::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--text-secondary);
+  transition: all var(--duration-normal) var(--ease-bounce);
+}
+
+.creator-dj-card__switch--active {
+  background: rgba(139, 92, 246, 0.34);
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.22);
+}
+
+.creator-dj-card__switch--active::after {
+  transform: translateX(20px);
+  background: white;
+}
+
+.creator-dj-card__fields {
+  display: grid;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg) var(--space-lg);
+  animation: creatorFadeIn 0.25s var(--ease-out) both;
+}
+
 /* ---- Kitty tip ---- */
 .creator-tip {
   display: flex;
@@ -354,6 +456,18 @@
   font-size: var(--text-sm);
   color: rgba(255, 255, 255, 0.6);
   margin-top: var(--space-sm);
+}
+
+.creator-preview__dj {
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid rgba(204, 255, 0, 0.24);
+  border-radius: var(--radius-full);
+  background: rgba(204, 255, 0, 0.1);
+  color: var(--neon-lime);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 /* ---- Share buttons row ---- */

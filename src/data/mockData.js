@@ -16,6 +16,7 @@ export const MOCK_EVENT = {
   host_name: 'Arjun Mehta',
   name: 'Rooftop Sundowner',
   tagline: 'golden hour vibes & good people only ✨',
+  city: 'Bengaluru',
   date: '2026-06-21',
   time_start: '18:00',
   time_end: '23:30',
@@ -27,8 +28,18 @@ export const MOCK_EVENT = {
   poster_url: null,
   spotify_playlist_url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
   upi_id: 'arjun@okicici',
+  cover_charge: 499,
+  capacity: 45,
+  discoverable: true,
+  vibe_tags: ['rooftop', 'sundowner', 'byob'],
+  has_personal_dj: true,
+  dj_name: 'Naina K',
+  dj_profile_url: 'https://soundcloud.com/',
+  dj_instagram: 'https://instagram.com/',
+  dj_genre: 'Afro house, Bolly-tech',
   status: 'live',
   photo_dump_unlocked: false,
+  contains_alcohol: true,
 };
 
 export const MOCK_EVENT_ACTIVE = {
@@ -43,10 +54,30 @@ export const MOCK_EVENT_ACTIVE = {
     return `${now.getHours().toString().padStart(2, '0')}:00`;
   })(),
   time_end: '03:00',
+  city: 'Bengaluru',
   theme: 'psychedelic',
+  cover_charge: 350,
+  capacity: 30,
+  discoverable: true,
+  vibe_tags: ['terrace', 'late night', 'friends of friends'],
+  has_personal_dj: false,
+  dj_name: '',
+  dj_profile_url: '',
+  dj_instagram: '',
+  dj_genre: '',
   status: 'active',
   photo_dump_unlocked: true,
 };
+
+export const DISCOVERY_CITIES = [
+  'All',
+  'Bengaluru',
+  'Mumbai',
+  'Delhi NCR',
+  'Pune',
+  'Hyderabad',
+  'Goa',
+];
 
 export const MOCK_RSVPS = [
   {
@@ -218,12 +249,48 @@ export const PARTY_THEMES = [
   },
 ];
 
+export const MOCK_USER = {
+  id: 'host_001',
+  username: 'arjun',
+  email: 'arjun@lowkey.com',
+  password: 'password',
+  name: 'Arjun Mehta',
+  birthdate: '2000-01-01', // 26 years old
+  phone: '+919876543210'
+};
+
 /**
  * Load mock data into localStorage (call once on first load)
  */
 export function seedMockData() {
+  // Ensure user is present in users database
+  const existingUsers = JSON.parse(localStorage.getItem('lowkey_users') || '[]');
+  if (!existingUsers.some(u => u.username === MOCK_USER.username)) {
+    existingUsers.push(MOCK_USER);
+    localStorage.setItem('lowkey_users', JSON.stringify(existingUsers));
+  }
+  
+  // Set default session if empty
+  if (!localStorage.getItem('lowkey_session')) {
+    localStorage.setItem('lowkey_session', JSON.stringify(MOCK_USER));
+  }
+
   const seeded = localStorage.getItem('lowkey_seeded');
-  if (seeded) return;
+  if (seeded) {
+    const existingEvents = JSON.parse(localStorage.getItem('lowkey_events') || '[]');
+    const demoEvents = [MOCK_EVENT, MOCK_EVENT_ACTIVE];
+    const mergedEvents = existingEvents.map(event => {
+      const demo = demoEvents.find(item => item.id === event.id);
+      return demo ? { ...demo, ...event } : event;
+    });
+    demoEvents.forEach(demo => {
+      if (!mergedEvents.some(event => event.id === demo.id)) {
+        mergedEvents.push(demo);
+      }
+    });
+    localStorage.setItem('lowkey_events', JSON.stringify(mergedEvents));
+    return;
+  }
 
   localStorage.setItem('lowkey_events', JSON.stringify([MOCK_EVENT, MOCK_EVENT_ACTIVE]));
   localStorage.setItem('lowkey_rsvps', JSON.stringify(MOCK_RSVPS));
