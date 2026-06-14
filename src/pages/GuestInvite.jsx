@@ -4,9 +4,10 @@ import GlassCard from '../components/GlassCard';
 import PollSelector from '../components/PollSelector';
 import AvatarStack from '../components/AvatarStack';
 import SpotifyEmbed from '../components/SpotifyEmbed';
-import { getEvent, getRSVPs, addRSVP, getCurrentUser } from '../utils/storage';
+import { getEvent, getRSVPs, addRSVP, getCurrentUser, addPayment } from '../utils/storage';
 import { generateId, formatDate, formatTime, getInitials, getAvatarGradient } from '../utils/helpers';
 import { MOCK_EVENT, MOCK_RSVPS } from '../data/mockData';
+import PaymentModal from '../components/PaymentModal';
 import './GuestInvite.css';
 
 /** Confetti color palette */
@@ -39,30 +40,45 @@ export default function GuestInvite() {
     return storedRsvps.length > 0 ? storedRsvps : MOCK_RSVPS;
   });
 
-  // Form state
-  const [guestName, setGuestName] = useState(() => currentUser ? currentUser.name : '');
-  const [guestDob, setGuestDob] = useState('');
-  const [ageError, setAgeError] = useState('');
-  const [pollFood, setPollFood] = useState('');
-  const [pollDrinks, setPollDrinks] = useState('');
-  const [pollStaying, setPollStaying] = useState('');
-  const [plusOne, setPlusOne] = useState(false);
-  const [plusOneName, setPlusOneName] = useState('');
-
-  // Submission state
   const [submitted, setSubmitted] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
 
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingRsvp, setPendingRsvp] = useState(null);
+
   if (!event) return null;
+
+  const existingRsvp = currentUser ? rsvps.find(r => r.user_id === currentUser.id) : null;
+  const isEditingRsvp = !!existingRsvp;
 
   // Derived data
   const themeClass = `theme-${event.theme || 'neon'}`;
-  const goingCount = rsvps.filter(r => r.status === 'going').length;
+  const goingCount = rsvps
+    .filter(r => r.status === 'going' && (!existingRsvp || r.id !== existingRsvp.id))
+    .reduce((sum, r) => sum + (r.guest_count || 1), 0);
   const maybeCount = rsvps.filter(r => r.status === 'maybe').length;
   const guestNames = rsvps
     .filter(r => r.status === 'going')
     .map(r => r.guest_name);
+
+  const availableCapacity = event.capacity ? Math.max(0, event.capacity - goingCount) : Infinity;
+
+  // Form state overriding with existing RSVP data if present
+  const [guestName, setGuestName] = useState(() => existingRsvp ? existingRsvp.guest_name : (currentUser ? currentUser.name : ''));
+  const [guestDob, setGuestDob] = useState('');
+  const [ageError, setAgeError] = useState('');
+  
+  const defaultFood = existingRsvp && typeof existingRsvp.poll_food === 'object' && existingRsvp.poll_food !== null 
+    ? existingRsvp.poll_food 
+    : { veg: existingRsvp ? (existingRsvp.guest_count || 1) : 1, nonveg: 0, vegan: 0 };
+  const defaultDrinks = existingRsvp && typeof existingRsvp.poll_drinks === 'object' && existingRsvp.poll_drinks !== null 
+    ? existingRsvp.poll_drinks 
+    : { byob: existingRsvp ? (existingRsvp.guest_count || 1) : 1, mocktails: 0 };
+    
+  const [foodBreakdown, setFoodBreakdown] = useState(defaultFood);
+  const [drinksBreakdown, setDrinksBreakdown] = useState(defaultDrinks);
+  const [guestCount, setGuestCount] = useState(existingRsvp ? existingRsvp.guest_count || 1 : 1);
 
   const getAge = (dobString) => {
     if (!dobString) return 0;
@@ -74,6 +90,26 @@ export default function GuestInvite() {
       age--;
     }
     return age;
+  };
+
+  /** Finalize RSVP submission after checks/payments */
+  const submitRSVP = (rsvpData) => {
+    addRSVP(rsvpData);
+    setRsvps(prev => [...prev, rsvpData]);
+    setSubmitted(true);
+    setShowConfetti(true);
+
+    // Haptic feedback (if supported)
+    if (navigator.vibrate) {
+      navigator.vibrate([30, 50, 80]);
+    }
+
+    // Show toast
+    setTimeout(() => setShowToast(true), 400);
+
+    // Hide confetti + toast after a few seconds
+    setTimeout(() => setShowConfetti(false), 2000);
+    setTimeout(() => setShowToast(false), 3500);
   };
 
   /** Handle RSVP submission */
@@ -94,38 +130,86 @@ export default function GuestInvite() {
       }
     }
 
+    const totalFood = Object.values(foodBreakdown).reduce((a, b) => a + b, 0);
+    const totalDrinks = Object.values(drinksBreakdown).reduce((a, b) => a + b, 0);
+    
+    if (totalFood !== guestCount || totalDrinks !== guestCount) {
+      setAgeError(`Food (${totalFood}) and Drink (${totalDrinks}) selections must equal the number of tickets (${guestCount}).`);
+      return;
+    }
+
     const rsvpData = {
-      id: generateId(),
+      id: existingRsvp ? existingRsvp.id : generateId(),
       event_id: event.id,
       guest_name: trimmed,
       user_id: currentUser ? currentUser.id : null,
       guest_phone: null,
       status: 'going',
-      poll_food: pollFood || null,
-      poll_drinks: pollDrinks || null,
-      poll_staying: pollStaying || null,
-      plus_one_requested: plusOne,
-      plus_one_name: plusOne ? plusOneName.trim() || null : null,
-      plus_one_approved: null,
+      poll_food: foodBreakdown,
+      poll_drinks: drinksBreakdown,
       guest_birthdate: currentUser ? currentUser.birthdate : guestDob,
+      guest_count: guestCount,
     };
 
-    addRSVP(rsvpData);
-    setRsvps(prev => [...prev, rsvpData]);
-    setSubmitted(true);
-    setShowConfetti(true);
-
-    // Haptic feedback (if supported)
-    if (navigator.vibrate) {
-      navigator.vibrate([30, 50, 80]);
+    // If editing and guestCount hasn't increased, no need to pay again
+    const oldGuestCount = existingRsvp ? (existingRsvp.guest_count || 1) : 0;
+    const additionalGuests = Math.max(0, guestCount - oldGuestCount);
+    
+    if (event.cover_charge > 0 && additionalGuests > 0) {
+      setPendingRsvp({ ...rsvpData, _additionalGuests: additionalGuests });
+      setShowPaymentModal(true);
+    } else {
+      if (existingRsvp) {
+        // Update existing RSVP
+        const updatedRsvps = rsvps.map(r => r.id === rsvpData.id ? rsvpData : r);
+        setRsvps(updatedRsvps);
+        localStorage.setItem('lowkey_rsvps', JSON.stringify(updatedRsvps));
+        setSubmitted(true);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3500);
+      } else {
+        submitRSVP(rsvpData);
+      }
     }
+  };
 
-    // Show toast
-    setTimeout(() => setShowToast(true), 400);
+  /** Callback when payment is successfully confirmed */
+  const handlePaymentSuccess = ({ gateway, transactionId }) => {
+    setShowPaymentModal(false);
+    if (!pendingRsvp) return;
 
-    // Hide confetti + toast after a few seconds
-    setTimeout(() => setShowConfetti(false), 2000);
-    setTimeout(() => setShowToast(false), 3500);
+    const paymentData = {
+      id: 'pay_' + Math.random().toString(36).substring(2, 11),
+      rsvp_id: pendingRsvp.id,
+      event_id: event.id,
+      amount: event.cover_charge * (pendingRsvp._additionalGuests || pendingRsvp.guest_count),
+      paid_by: pendingRsvp.guest_name,
+      transaction_id: transactionId,
+      gateway: gateway,
+      status: 'success'
+    };
+
+    // Save payment
+    const storedPayments = JSON.parse(localStorage.getItem('lowkey_payments') || '[]');
+    storedPayments.push(paymentData);
+    localStorage.setItem('lowkey_payments', JSON.stringify(storedPayments));
+
+    const finalRsvp = { ...pendingRsvp };
+    delete finalRsvp._additionalGuests;
+
+    if (existingRsvp) {
+      const updatedRsvps = rsvps.map(r => r.id === finalRsvp.id ? finalRsvp : r);
+      setRsvps(updatedRsvps);
+      localStorage.setItem('lowkey_rsvps', JSON.stringify(updatedRsvps));
+      setSubmitted(true);
+      setShowConfetti(true);
+      setTimeout(() => setShowToast(true), 400);
+      setTimeout(() => setShowConfetti(false), 2000);
+      setTimeout(() => setShowToast(false), 3500);
+    } else {
+      submitRSVP(finalRsvp);
+    }
+    setPendingRsvp(null);
   };
 
   return (
@@ -141,7 +225,13 @@ export default function GuestInvite() {
         <div className="invite-hero__content">
           <h1 className="invite-hero__title">{event.name}</h1>
 
-          {event.tagline && (
+          {event.vibe_tags && event.vibe_tags.length > 0 ? (
+            <div className="invite-hero__tags">
+              {event.vibe_tags.map(tag => (
+                <span key={tag} className="invite-hero__tag-chip">#{tag.toLowerCase()}</span>
+              ))}
+            </div>
+          ) : event.tagline && (
             <p className="invite-hero__tagline">{event.tagline}</p>
           )}
 
@@ -230,80 +320,58 @@ export default function GuestInvite() {
         </div>
 
         <div className="invite-body-col">
-          {/* ---- Smart Polls ---- */}
+          {/* ---- Detailed Ticket Customization ---- */}
           <div className="invite-section">
-            <h2 className="invite-section__title">Vibe Check</h2>
+            <h2 className="invite-section__title">Vibe Check {guestCount > 1 && `(${guestCount} Tickets)`}</h2>
             <GlassCard>
               <div className="invite-polls">
-                <PollSelector
-                  label="what's your vibe?"
-                  options={[
-                    { value: 'veg', label: 'Pure Veg', emoji: '🥗' },
-                    { value: 'nonveg', label: 'Non-Veg', emoji: '🍗' },
-                    { value: 'vegan', label: 'Vegan', emoji: '🌱' },
-                  ]}
-                  value={pollFood}
-                  onChange={setPollFood}
-                  accentColor="purple"
-                />
-
-                <PollSelector
-                  label="drinking?"
-                  options={[
-                    { value: 'byob', label: 'BYOB', emoji: '🍺' },
-                    { value: 'mocktails', label: 'Mocktails', emoji: '🍹' },
-                  ]}
-                  value={pollDrinks}
-                  onChange={setPollDrinks}
-                  accentColor="pink"
-                />
-
-                <PollSelector
-                  label="staying the night?"
-                  options={[
-                    { value: 'staying', label: 'Staying', emoji: '🛏️' },
-                    { value: 'cab', label: 'Booking a cab', emoji: '🚕' },
-                  ]}
-                  value={pollStaying}
-                  onChange={setPollStaying}
-                  accentColor="lime"
-                />
-              </div>
-            </GlassCard>
-          </div>
-
-          {/* ---- Plus One ---- */}
-          <div className="invite-section">
-            <GlassCard className="invite-plusone">
-              <div
-                className="invite-plusone__toggle"
-                onClick={() => setPlusOne(!plusOne)}
-                role="switch"
-                aria-checked={plusOne}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlusOne(!plusOne); } }}
-              >
-                <span className="invite-plusone__toggle-label">
-                  Bringing a plus one?
-                </span>
-                <span className={`invite-plusone__switch ${plusOne ? 'invite-plusone__switch--active' : ''}`} />
-              </div>
-
-              {plusOne && (
-                <div className="invite-plusone__input-wrap">
-                  <input
-                    className="invite-plusone__input"
-                    type="text"
-                    placeholder="their name"
-                    value={plusOneName}
-                    onChange={(e) => setPlusOneName(e.target.value)}
-                    autoComplete="off"
-                  />
-                  <p className="invite-plusone__hint">host will approve privately</p>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  Customize food and drink preferences for your tickets.
+                </p>
+                
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--text-primary)' }}>Food Preference</h4>
+                  {[{ key: 'veg', label: 'Pure Veg', emoji: '🥗' }, { key: 'nonveg', label: 'Non-Veg', emoji: '🍗' }, { key: 'vegan', label: 'Vegan', emoji: '🌱' }].map(opt => (
+                    <div key={opt.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '14px' }}>{opt.emoji} {opt.label}</span>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        max={guestCount} 
+                        value={foodBreakdown[opt.key]} 
+                        onChange={(e) => setFoodBreakdown(prev => ({ ...prev, [opt.key]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        style={{ width: '60px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)', color: '#fff', borderRadius: '4px', padding: '4px 8px', textAlign: 'center' }}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ textAlign: 'right', fontSize: '12px', color: Object.values(foodBreakdown).reduce((a, b) => a + b, 0) === guestCount ? 'var(--neon-green)' : 'var(--neon-pink)' }}>
+                    Total: {Object.values(foodBreakdown).reduce((a, b) => a + b, 0)} / {guestCount}
+                  </div>
                 </div>
-              )}
+
+                <div>
+                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--text-primary)' }}>Drink Preference</h4>
+                  {[{ key: 'byob', label: 'BYOB', emoji: '🍺' }, { key: 'mocktails', label: 'Mocktails', emoji: '🍹' }].map(opt => (
+                    <div key={opt.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '14px' }}>{opt.emoji} {opt.label}</span>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        max={guestCount} 
+                        value={drinksBreakdown[opt.key]} 
+                        onChange={(e) => setDrinksBreakdown(prev => ({ ...prev, [opt.key]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        style={{ width: '60px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)', color: '#fff', borderRadius: '4px', padding: '4px 8px', textAlign: 'center' }}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ textAlign: 'right', fontSize: '12px', color: Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) === guestCount ? 'var(--neon-green)' : 'var(--neon-pink)' }}>
+                    Total: {Object.values(drinksBreakdown).reduce((a, b) => a + b, 0)} / {guestCount}
+                  </div>
+                </div>
+              </div>
             </GlassCard>
           </div>
+
 
           <hr className="invite-divider" />
 
@@ -355,13 +423,24 @@ export default function GuestInvite() {
                     />
                   )}
 
+                  {!submitted && availableCapacity > 1 && (
+                    <div className="invite-ticket-counter" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', background: 'rgba(255,255,255,0.05)', padding: '12px 16px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--glass-border)' }}>
+                      <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginRight: 'auto' }}>Number of tickets</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <button type="button" onClick={() => setGuestCount(Math.max(1, guestCount - 1))} style={{ width: '32px', height: '32px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: '18px', cursor: 'pointer' }}>-</button>
+                        <span style={{ width: '20px', textAlign: 'center', fontWeight: 'bold' }}>{guestCount}</span>
+                        <button type="button" onClick={() => setGuestCount(Math.min(availableCapacity, guestCount + 1))} style={{ width: '32px', height: '32px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: '18px', cursor: 'pointer' }}>+</button>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     className={`invite-rsvp__cta ${submitted ? 'invite-rsvp__cta--success' : ''}`}
                     onClick={handleRSVP}
-                    disabled={submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob)}
+                    disabled={submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob) || Object.values(foodBreakdown).reduce((a, b) => a + b, 0) !== guestCount || Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) !== guestCount}
                     type="button"
                   >
-                    {submitted ? '✓ Joined' : 'Join Party'}
+                    {submitted ? '✓ Saved' : (isEditingRsvp ? 'Update RSVP' : 'Join Party')}
                   </button>
                 </>
               )}
@@ -370,10 +449,6 @@ export default function GuestInvite() {
         </div>
       </div>
 
-      {/* ---- Footer ---- */}
-      <footer className="invite-footer">
-        made with love on <span className="brand-cursive text-gradient">lowkey</span>
-      </footer>
 
       {/* ====== Confetti Overlay ====== */}
       {showConfetti && (
@@ -402,6 +477,20 @@ export default function GuestInvite() {
           You are locked in!
         </div>
       )}
+
+      {/* ====== Payment Checkout Modal ====== */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setPendingRsvp(null);
+        }}
+        amount={event.cover_charge * (pendingRsvp?._additionalGuests || pendingRsvp?.guest_count || 1)}
+        upiId={event.upi_id || 'lowkey@okaxis'}
+        payeeName={event.host_name || 'LowKey Host'}
+        note={`Entry Cover: ${event.name}`}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </div>
   );
 }

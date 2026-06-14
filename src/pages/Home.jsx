@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   getEvents, 
   getCurrentUser, 
@@ -9,18 +9,36 @@ import {
 } from '../utils/storage';
 import { DISCOVERY_CITIES } from '../data/mockData';
 import { formatDate, formatTime, formatINR } from '../utils/helpers';
+import SvgDecor from '../components/SvgDecor';
 import './Home.css';
 
-function Home() {
+function Home({
+  currentUser,
+  setCurrentUser,
+  activeTab,
+  setActiveTab,
+  loginRedirect,
+  setLoginRedirect,
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [events] = useState(() => getEvents());
   const [selectedCity, setSelectedCity] = useState('All');
-  const [activeTab, setActiveTab] = useState('discover');
+  
+  // Sync tab transitions from other pages
+  useEffect(() => {
+    if (location.state?.tab) {
+      setActiveTab(location.state.tab);
+      if (location.state.redirect !== undefined) {
+        setLoginRedirect(location.state.redirect);
+      }
+      // Clean up router state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, setActiveTab, setLoginRedirect]);
   
   // Auth states
-  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [isSignUp, setIsSignUp] = useState(false);
-  const [loginRedirect, setLoginRedirect] = useState(false);
   const [authError, setAuthError] = useState('');
 
   // Login form state
@@ -124,93 +142,15 @@ function Home() {
 
   return (
     <div className="home-container">
-      {/* Normal Header Navbar at Top of Page */}
-      <nav className="home-navbar" aria-label="Main navigation">
-        <div className="navbar-content">
-          {/* Left Logo */}
-          <div className="navbar-logo">
-            <span className="brand-cursive text-gradient" onClick={() => setActiveTab('discover')}>lowkey</span>
-          </div>
-          
-          {/* Center Tabs */}
-          <div className="navbar-tabs">
-            <button
-              className={`navbar-tab ${activeTab === 'discover' ? 'navbar-tab--active' : ''}`}
-              onClick={() => setActiveTab('discover')}
-              type="button"
-            >
-              Discover
-            </button>
-            <button
-              className={`navbar-tab ${activeTab === 'create' ? 'navbar-tab--active' : ''}`}
-              onClick={() => {
-                if (currentUser) {
-                  navigate('/create');
-                } else {
-                  setLoginRedirect(true);
-                  setAuthError('');
-                  setActiveTab('login');
-                }
-              }}
-              type="button"
-            >
-              Create Party
-            </button>
-            {currentUser && (
-              <>
-                <button
-                  className={`navbar-tab ${activeTab === 'my-parties' ? 'navbar-tab--active' : ''}`}
-                  onClick={() => setActiveTab('my-parties')}
-                  type="button"
-                >
-                  Hosted
-                </button>
-                <button
-                  className={`navbar-tab ${activeTab === 'rsvps' ? 'navbar-tab--active' : ''}`}
-                  onClick={() => setActiveTab('rsvps')}
-                  type="button"
-                >
-                  RSVPs
-                </button>
-              </>
-            )}
-          </div>
-          
-          {/* Right Auth Action */}
-          <div className="navbar-auth">
-            {currentUser ? (
-              <button
-                className="navbar-auth-btn navbar-auth-btn--logout"
-                onClick={handleLogout}
-                type="button"
-              >
-                Logout
-              </button>
-            ) : (
-              <button
-                className={`navbar-auth-btn navbar-auth-btn--login ${activeTab === 'login' ? 'navbar-auth-btn--active' : ''}`}
-                onClick={() => {
-                  setLoginRedirect(false);
-                  setAuthError('');
-                  setActiveTab('login');
-                }}
-                type="button"
-              >
-                Log In
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
-
       {/* Page Wrapper */}
       <div className="page home">
         {/* Brand Header */}
         <header className="home-header animate-fade-in-up">
+          <SvgDecor variant="hero" />
           <div className="home-logo">
             <span className="home-logo__text brand-cursive text-gradient">lowkey</span>
           </div>
-          <p className="home-tagline">find and host house parties across India</p>
+          <p className="home-tagline tagline-culture">for the culture</p>
         </header>
 
       {/* Tab Contents */}
@@ -321,6 +261,8 @@ function Home() {
             )}
           </section>
 
+          <SvgDecor variant="section" />
+
           {/* Clean Features Grid */}
           <section className="home-features-clean stagger" style={{ animationDelay: '260ms' }}>
             <h3 className="home-section-title">Built for the Culture</h3>
@@ -355,6 +297,8 @@ function Home() {
               </div>
             </div>
           </section>
+
+          <SvgDecor variant="section" />
 
           {/* Demo Section */}
           <section className="home-demo animate-fade-in-up" style={{ animationDelay: '350ms' }}>
@@ -591,11 +535,6 @@ function Home() {
           )}
         </section>
       )}
-
-      {/* Footer */}
-      <footer className="home-footer">
-        <p>made with love for the culture</p>
-      </footer>
     </div>
   </div>
   );

@@ -154,3 +154,140 @@
 }
 
 /* film grain animation is defined globally in index.css */
+
+/* ---- Timer Banner ---- */
+.photo-grid-timer-banner {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  color: #ff6b6b;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-md);
+}
+
+.photo-grid-timer-banner .timer-icon {
+  font-size: 16px;
+}
+
+/* ---- Extra Meta Info ---- */
+.photo-grid__uploader {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  display: block;
+}
+
+.photo-grid__download-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 2;
+}
+
+.photo-grid__download-btn:hover {
+  background: var(--neon-purple);
+}
+
+/* ---- Lightbox Modal ---- */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.3s ease-out forwards;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 10000;
+  padding: 8px;
+  transition: transform 0.2s;
+}
+
+.lightbox-close:hover {
+  transform: scale(1.1);
+}
+
+.lightbox-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 90vw;
+  max-height: 90vh;
+  position: relative;
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 75vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(20, 20, 20, 0.8);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lightbox-info {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.lightbox-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.lightbox-download-btn {
+  background: var(--gradient-primary);
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: bold;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  box-shadow: var(--shadow-glow-purple);
+  transition: transform 0.2s;
+}
+
+.lightbox-download-btn:hover {
+  transform: translateY(-2px);
+}

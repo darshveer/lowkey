@@ -3,15 +3,19 @@
    ============================================================ */
 
 .home {
-  padding-top: 110px;
+  padding-top: 130px;
   padding-bottom: var(--space-3xl);
   position: relative;
 }
 
 @media (max-width: 768px) {
   .home {
-    padding-top: 96px;
+    padding-top: 110px;
   }
+}
+
+.home-container {
+  position: relative;
 }
 
 .home::before {
@@ -30,7 +34,9 @@
 /* ---- Header / Brand ---- */
 .home-header {
   text-align: center;
-  padding: var(--space-2xl) 0 var(--space-lg);
+  padding: var(--space-3xl) 0 var(--space-xl);
+  position: relative;
+  z-index: 1;
 }
 
 .home-logo__text {
@@ -516,159 +522,21 @@
   font-size: var(--text-sm);
 }
 
-/* ---- Home Navbar (Floating Glass Capsule) ---- */
-.home-navbar {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 32px);
-  max-width: 1200px;
-  height: 64px;
-  background: rgba(15, 15, 15, 0.75);
-  border: 1px solid var(--glass-border-strong);
-  border-radius: var(--radius-full);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  z-index: var(--z-sticky);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+/* ---- Tagline Culture ---- */
+.tagline-culture {
+  font-family: var(--font-display) !important;
+  font-size: var(--text-base) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.25em !important;
+  background: var(--gradient-aurora);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  margin-top: var(--space-sm);
+  text-shadow: none;
 }
 
-.navbar-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 100%;
-  padding: 0 var(--space-lg);
-}
-
-.navbar-logo {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-}
-
-.navbar-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.navbar-tab {
-  padding: 8px var(--space-md);
-  border-radius: var(--radius-full);
-  color: var(--text-secondary);
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  transition: all var(--duration-normal) var(--ease-out);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.navbar-tab:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.navbar-tab--active {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.navbar-auth {
-  display: flex;
-  align-items: center;
-}
-
-.navbar-auth-btn {
-  padding: 8px var(--space-lg);
-  border-radius: var(--radius-full);
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  transition: all var(--duration-normal) var(--ease-out);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.navbar-auth-btn--login {
-  background: var(--gradient-primary);
-  color: #fff;
-  box-shadow: var(--shadow-glow-purple);
-  border: none;
-}
-
-.navbar-auth-btn--login:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
-}
-
-.navbar-auth-btn--login:active {
-  transform: translateY(0);
-}
-
-.navbar-auth-btn--logout {
-  color: rgba(255, 107, 107, 0.9);
-  border: 1px solid rgba(255, 107, 107, 0.2);
-  background: rgba(255, 107, 107, 0.05);
-}
-
-.navbar-auth-btn--logout:hover {
-  background: rgba(255, 107, 107, 0.12);
-  color: rgb(255, 107, 107);
-}
-
-.home-dashboard-tab {
-  max-width: 1200px;
-  margin: 0 auto var(--space-2xl);
-}
-
-.home-parties__list {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: var(--space-md);
-}
-
-@media (min-width: 768px) {
-  .home-parties__list {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-lg);
-  }
-}
-
-@media (max-width: 768px) {
-  .home-navbar {
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    width: auto;
-    height: 56px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--glass-border-strong);
-  }
-  .navbar-content {
-    padding: 0 var(--space-md);
-    gap: var(--space-xs);
-  }
-  .navbar-logo {
-    display: none;
-  }
-  .navbar-tabs {
-    flex: 1;
-    justify-content: center;
-    gap: 4px;
-  }
-  .navbar-tab, .navbar-auth-btn {
-    font-size: var(--text-xs);
-    padding: 6px 12px;
-  }
-}
 
 /* ---- Auth Cards ---- */
 .home-auth {

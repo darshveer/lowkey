@@ -40,7 +40,7 @@ export async function generateUPIQR(params) {
     margin: 2,
     color: {
       dark: '#F4F4F4',
-      light: '#00000000', // transparent background
+      light: '#FFFFFF', // solid white background
     },
     errorCorrectionLevel: 'H',
   });

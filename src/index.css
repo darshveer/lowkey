@@ -536,7 +536,7 @@ h6 { font-size: var(--text-lg); }
 
 @media (min-width: 1024px) {
   .page {
-    max-width: 520px;
+    max-width: 1200px;
   }
 }
 
@@ -658,3 +658,17 @@ h6 { font-size: var(--text-lg); }
   white-space: nowrap;
   border-width: 0;
 }
+
+/* ---- Footer Culture ---- */
+.footer-culture {
+  text-align: center;
+  padding: var(--space-xl) 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 100%;
+  margin-top: auto;
+}
+

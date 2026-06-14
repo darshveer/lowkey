@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import GlowButton from '../components/GlowButton';
 import { generateId, shareLink, shareToWhatsApp } from '../utils/helpers';
 import { saveEvent, getCurrentUser } from '../utils/storage';
 import { DISCOVERY_CITIES, PARTY_THEMES } from '../data/mockData';
+import SvgDecor from '../components/SvgDecor';
 import './CreatorStudio.css';
 
 /** Step labels for the progress indicator */
@@ -28,7 +29,9 @@ export default function CreatorStudio() {
 
   // --- Form state ---
   const [name, setName] = useState('');
-  const [tagline, setTagline] = useState('');
+  const [customTags, setCustomTags] = useState([]);
+  const [removedTags, setRemovedTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
   const [date, setDate] = useState('');
   const [timeStart, setTimeStart] = useState('');
   const [timeEnd, setTimeEnd] = useState('');
@@ -36,6 +39,8 @@ export default function CreatorStudio() {
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [theme, setTheme] = useState('neon');
+  const [vibeOption, setVibeOption] = useState('');
+  const [customVibe, setCustomVibe] = useState('');
   const [spotifyUrl, setSpotifyUrl] = useState('');
   const [upiId, setUpiId] = useState('');
   const [coverCharge, setCoverCharge] = useState('');
@@ -46,6 +51,67 @@ export default function CreatorStudio() {
   const [djProfileUrl, setDjProfileUrl] = useState('');
   const [djInstagram, setDjInstagram] = useState('');
   const [containsAlcohol, setContainsAlcohol] = useState(false);
+  const [externalPhotoLink, setExternalPhotoLink] = useState('');
+
+  /** Returns true if end time is on the next day relative to start time */
+  const isNextDay = timeStart && timeEnd && timeEnd < timeStart;
+
+  const SUGGESTED_TAGS = ['21+', 'House Party', 'Late Night', 'Techno', 'Bollywood', 'Aesthetic', 'Chill', 'Games', 'BYOB', 'Rooftop', 'Pool Party'];
+
+  // Derive tags from current choices
+  const derivedAutoTags = useMemo(() => {
+    const tags = [];
+    if (city && city !== 'All') tags.push(city);
+    const finalVibe = vibeOption === 'custom' ? customVibe : vibeOption;
+    if (finalVibe) tags.push(finalVibe);
+    if (containsAlcohol) tags.push('BYOB');
+    if (hasPersonalDj) tags.push('DJ Set');
+    if (coverCharge && Number(coverCharge) > 0) tags.push('Cover Charge');
+    if (theme && theme !== 'none') {
+      const themeName = PARTY_THEMES.find(t => t.id === theme)?.name;
+      if (themeName) tags.push(themeName);
+    }
+    return tags.filter(Boolean);
+  }, [city, vibeOption, customVibe, containsAlcohol, hasPersonalDj, coverCharge, theme]);
+
+  // Combined tags: auto-derived (filtered by blacklist) + custom tags
+  const activeTags = useMemo(() => {
+    const filteredAuto = derivedAutoTags.filter(tag => !removedTags.includes(tag));
+    return [...new Set([...filteredAuto, ...customTags])];
+  }, [derivedAutoTags, removedTags, customTags]);
+
+  const handleToggleTag = (tag) => {
+    const normalized = tag.trim();
+    if (!normalized) return;
+
+    if (activeTags.includes(normalized)) {
+      if (derivedAutoTags.includes(normalized)) {
+        setRemovedTags(prev => [...prev, normalized]);
+      } else {
+        setCustomTags(prev => prev.filter(t => t !== normalized));
+      }
+    } else {
+      if (derivedAutoTags.includes(normalized)) {
+        setRemovedTags(prev => prev.filter(t => t !== normalized));
+      } else {
+        setCustomTags(prev => [...prev, normalized]);
+      }
+    }
+  };
+
+  const handleAddCustomTag = (e) => {
+    e?.preventDefault();
+    const clean = tagInput.trim();
+    if (!clean) return;
+    if (!activeTags.includes(clean)) {
+      if (derivedAutoTags.includes(clean)) {
+        setRemovedTags(prev => prev.filter(t => t !== clean));
+      } else {
+        setCustomTags(prev => [...prev, clean]);
+      }
+    }
+    setTagInput('');
+  };
 
   // Generated on create
   const [eventId, setEventId] = useState('');
@@ -105,10 +171,11 @@ export default function CreatorStudio() {
       host_id: currentUser ? currentUser.id : 'local_host',
       host_name: currentUser ? currentUser.name : 'You',
       name: name.trim(),
-      tagline: tagline.trim(),
+      tagline: activeTags.map(t => '#' + t).join(' '),
       date,
       time_start: timeStart,
       time_end: timeEnd,
+      time_end_next_day: isNextDay,
       city,
       location_name: locationName.trim(),
       location_address: locationAddress.trim(),
@@ -118,7 +185,7 @@ export default function CreatorStudio() {
       cover_charge: coverCharge ? Number(coverCharge) : 0,
       capacity: capacity ? Number(capacity) : null,
       discoverable: true,
-      vibe_tags: [city, hasPersonalDj ? 'DJ set' : 'playlist', containsAlcohol ? 'BYOB' : ''].filter(Boolean),
+      vibe_tags: activeTags,
       has_personal_dj: hasPersonalDj,
       dj_name: hasPersonalDj ? djName.trim() : '',
       dj_genre: hasPersonalDj ? djGenre.trim() : '',
@@ -127,6 +194,7 @@ export default function CreatorStudio() {
       status: 'live',
       photo_dump_unlocked: false,
       contains_alcohol: containsAlcohol,
+      external_photo_link: externalPhotoLink.trim() || null,
     };
 
     saveEvent(event);
@@ -178,14 +246,57 @@ export default function CreatorStudio() {
       </div>
 
       <div className="creator-field">
-        <input
-          className="input-glass"
-          type="text"
-          placeholder="keep it lowkey or go all out..."
-          value={tagline}
-          onChange={(e) => setTagline(e.target.value)}
-          maxLength={120}
-        />
+        <label className="creator-field__label">Party Tags <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.6 }}>(instead of tagline)</span></label>
+        
+        {/* Active tags pills */}
+        <div className="creator-tags-list">
+          {activeTags.map(tag => (
+            <span key={tag} className="creator-tag-chip">
+              #{tag.toLowerCase()}
+              <button type="button" className="creator-tag-chip__remove" onClick={() => handleToggleTag(tag)}>✕</button>
+            </span>
+          ))}
+          {activeTags.length === 0 && (
+            <span className="creator-tags-empty">No tags added yet. Auto-tags will populate as you fill options!</span>
+          )}
+        </div>
+
+        {/* Input box */}
+        <div className="creator-tag-input-row">
+          <input
+            className="input-glass creator-tag-input"
+            type="text"
+            placeholder="add custom tag..."
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddCustomTag();
+              }
+            }}
+            maxLength={20}
+          />
+          <button type="button" className="creator-tag-add-btn" onClick={handleAddCustomTag}>Add</button>
+        </div>
+
+        {/* Suggested tags */}
+        <div className="creator-tag-suggestions-label">Suggestions</div>
+        <div className="creator-tag-suggestions">
+          {SUGGESTED_TAGS.map(tag => {
+            const isSelected = activeTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                className={`creator-tag-suggest-btn ${isSelected ? 'selected' : ''}`}
+                onClick={() => handleToggleTag(tag)}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -214,13 +325,21 @@ export default function CreatorStudio() {
           />
         </div>
         <div className="creator-field">
-          <label className="creator-field__label">End</label>
+          <label className="creator-field__label">
+            End
+            {isNextDay && (
+              <span className="creator-next-day-badge">+1 day</span>
+            )}
+          </label>
           <input
             className="input-glass"
             type="time"
             value={timeEnd}
             onChange={(e) => setTimeEnd(e.target.value)}
           />
+          {isNextDay && (
+            <span className="creator-next-day-hint">Party goes past midnight into the next day</span>
+          )}
         </div>
       </div>
 
@@ -261,8 +380,23 @@ export default function CreatorStudio() {
     </div>
   );
 
+  // Built-in vibe options
+  const VIBE_OPTIONS = [
+    { value: '', label: 'Pick a vibe...' },
+    { value: 'rooftop', label: 'Rooftop' },
+    { value: 'house party', label: 'House Party' },
+    { value: 'sundowner', label: 'Sundowner' },
+    { value: 'late night', label: 'Late Night' },
+    { value: 'pool party', label: 'Pool Party' },
+    { value: 'birthday', label: 'Birthday' },
+    { value: 'potluck', label: 'Potluck' },
+    { value: 'bonfire', label: 'Bonfire' },
+    { value: 'custom', label: 'Custom...' },
+  ];
+
   const renderVibe = () => (
     <div className="creator-fields">
+      {/* Visual theme selector grid */}
       <div className="creator-themes">
         {PARTY_THEMES.map((t) => (
           <div
@@ -279,6 +413,32 @@ export default function CreatorStudio() {
             <span className="creator-theme-card__name">{t.name}</span>
           </div>
         ))}
+      </div>
+
+      {/* Vibe dropdown */}
+      <div className="creator-field">
+        <label className="creator-field__label">Party Vibe</label>
+        <select
+          className="input-glass"
+          value={vibeOption}
+          onChange={(e) => setVibeOption(e.target.value)}
+        >
+          {VIBE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        {vibeOption === 'custom' && (
+          <input
+            className="input-glass"
+            type="text"
+            placeholder="describe your vibe..."
+            value={customVibe}
+            onChange={(e) => setCustomVibe(e.target.value)}
+            maxLength={60}
+            style={{ marginTop: 'var(--space-sm)' }}
+            autoFocus
+          />
+        )}
       </div>
 
       <div className="creator-field">
@@ -409,6 +569,22 @@ export default function CreatorStudio() {
           Add your ID so everyone knows where to send their share.
         </span>
       </div>
+
+      <div className="creator-field" style={{ marginTop: 'var(--space-xl)' }}>
+        <label className="creator-field__label">External Photo Dump Link (Optional)</label>
+        <input
+          className="input-glass"
+          type="url"
+          placeholder="Google Drive, Apple Photos album link"
+          value={externalPhotoLink}
+          onChange={(e) => setExternalPhotoLink(e.target.value)}
+        />
+        <div className="creator-tip" style={{ marginTop: 'var(--space-sm)' }}>
+          <span className="creator-tip__text">
+            To save data, you can host your images externally. If provided, guests will be redirected to this link instead of uploading locally.
+          </span>
+        </div>
+      </div>
     </div>
   );
 
@@ -422,14 +598,19 @@ export default function CreatorStudio() {
           <div className="creator-preview__name">
             {name || 'Your Party'}
           </div>
-          {tagline && (
-            <div className="creator-preview__tagline">{tagline}</div>
+          {activeTags.length > 0 && (
+            <div className="creator-preview__tags">
+              {activeTags.map(tag => (
+                <span key={tag} className="preview-tag-chip">#{tag.toLowerCase()}</span>
+              ))}
+            </div>
           )}
           {date && (
             <div className="creator-preview__date">
               {previewDate()}
               {timeStart && ` · ${previewTime(timeStart)}`}
               {timeEnd && ` – ${previewTime(timeEnd)}`}
+              {isNextDay && <span style={{ marginLeft: '6px', fontSize: '0.75em', opacity: 0.7, fontWeight: 700 }}>+1</span>}
             </div>
           )}
           {locationName && (
@@ -461,14 +642,13 @@ export default function CreatorStudio() {
 
       {/* Create CTA */}
       <div className="creator-cta">
-        <GlowButton
-          variant="purple"
-          size="large"
+        <button
+          className="creator-create-btn"
           onClick={handleCreate}
-          fullWidth
+          type="button"
         >
           Create Party
-        </GlowButton>
+        </button>
       </div>
     </div>
   );
@@ -491,18 +671,7 @@ export default function CreatorStudio() {
 
   return (
     <div className="creator-page">
-      {/* Top bar */}
-      <div className="creator-topbar">
-        <span className="creator-topbar__logo brand-cursive text-gradient">lowkey</span>
-        <button
-          className="creator-topbar__close"
-          onClick={() => navigate('/')}
-          aria-label="Close"
-          type="button"
-        >
-          ✕
-        </button>
-      </div>
+      <SvgDecor variant="grid" />
 
       {/* Step dots */}
       <div className="creator-dots" role="progressbar" aria-valuenow={step + 1} aria-valuemin={1} aria-valuemax={STEPS.length}>

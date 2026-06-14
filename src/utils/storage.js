@@ -1,7 +1,8 @@
 /**
- * LocalStorage helpers for LowKey
- * Provides typed get/set with JSON serialization
+ * LocalStorage helpers for LowKey with Supabase Sync
+ * Provides typed get/set with JSON serialization and background Supabase persistence
  */
+import { supabase } from './supabase';
 
 const STORAGE_PREFIX = 'lowkey_';
 
@@ -57,12 +58,25 @@ export function getEvents() {
 export function saveEvent(event) {
   const events = getEvents();
   const idx = events.findIndex(e => e.id === event.id);
+  let updatedEvent;
+  
   if (idx >= 0) {
-    events[idx] = { ...events[idx], ...event, updated_at: new Date().toISOString() };
+    updatedEvent = { ...events[idx], ...event, updated_at: new Date().toISOString() };
+    events[idx] = updatedEvent;
   } else {
-    events.push({ ...event, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    updatedEvent = { 
+      ...event, 
+      created_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString() 
+    };
+    events.push(updatedEvent);
   }
   save('events', events);
+
+  // Background write to Supabase
+  supabase.from('events').upsert(updatedEvent).then(({ error }) => {
+    if (error) console.warn('Supabase saveEvent failed, using offline cache:', error.message);
+  });
 }
 
 /**
@@ -90,8 +104,48 @@ export function getRSVPs(eventId) {
  */
 export function addRSVP(rsvp) {
   const all = load('rsvps', []);
-  all.push({ ...rsvp, created_at: new Date().toISOString() });
+  const newRsvp = { ...rsvp, created_at: new Date().toISOString() };
+  all.push(newRsvp);
   save('rsvps', all);
+
+  // Background write to Supabase
+  supabase.from('rsvps').insert(newRsvp).then(({ error }) => {
+    if (error) console.warn('Supabase addRSVP failed, using offline cache:', error.message);
+  });
+}
+
+/**
+ * Update an RSVP
+ * @param {string} rsvpId
+ * @param {Object} updates
+ */
+export function updateRSVP(rsvpId, updates) {
+  const all = load('rsvps', []);
+  const idx = all.findIndex(r => r.id === rsvpId);
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], ...updates, updated_at: new Date().toISOString() };
+    save('rsvps', all);
+
+    // Background write to Supabase
+    supabase.from('rsvps').update(updates).eq('id', rsvpId).then(({ error }) => {
+      if (error) console.warn('Supabase updateRSVP failed:', error.message);
+    });
+  }
+}
+
+/**
+ * Delete an RSVP
+ * @param {string} rsvpId
+ */
+export function deleteRSVP(rsvpId) {
+  const all = load('rsvps', []);
+  const filtered = all.filter(r => r.id !== rsvpId);
+  save('rsvps', filtered);
+
+  // Background write to Supabase
+  supabase.from('rsvps').delete().eq('id', rsvpId).then(({ error }) => {
+    if (error) console.warn('Supabase deleteRSVP failed:', error.message);
+  });
 }
 
 /**
@@ -110,17 +164,57 @@ export function getExpenses(eventId) {
  */
 export function addExpense(expense) {
   const all = load('expenses', []);
-  all.push({ ...expense, created_at: new Date().toISOString() });
+  const newExpense = { ...expense, created_at: new Date().toISOString() };
+  all.push(newExpense);
   save('expenses', all);
+
+  // Background write to Supabase
+  supabase.from('expenses').insert(newExpense).then(({ error }) => {
+    if (error) console.warn('Supabase addExpense failed, using offline cache:', error.message);
+  });
 }
 
 /**
- * Get photos for an event
+ * Get photos for an event, automatically cleaning up photos older than 3 days
  * @param {string} eventId
  * @returns {Array}
  */
 export function getPhotos(eventId) {
-  const all = load('photos', []);
+  let all = load('photos', []);
+  const event = getEvent(eventId);
+  
+  if (event && event.date) {
+    // Determine the party end time
+    const eventEndDate = new Date(event.date);
+    if (event.time_end) {
+      const [h, m] = event.time_end.split(':').map(Number);
+      eventEndDate.setHours(h, m, 0, 0);
+      if (event.time_end_next_day) {
+        eventEndDate.setDate(eventEndDate.getDate() + 1);
+      }
+    } else {
+      // Fallback: 24h after event date
+      eventEndDate.setDate(eventEndDate.getDate() + 1);
+    }
+
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    const expirationDateMs = eventEndDate.getTime() + threeDaysMs;
+    const nowMs = new Date().getTime();
+
+    // If current time is past expiration, delete all photos for this event
+    if (nowMs > expirationDateMs) {
+      const photosToDelete = all.filter(p => p.event_id === eventId);
+      if (photosToDelete.length > 0) {
+        all = all.filter(p => p.event_id !== eventId);
+        save('photos', all);
+        // Delete from Supabase
+        photosToDelete.forEach(p => {
+          supabase.from('photos').delete().eq('id', p.id).then(() => {});
+        });
+      }
+    }
+  }
+
   return all.filter(p => p.event_id === eventId);
 }
 
@@ -130,8 +224,40 @@ export function getPhotos(eventId) {
  */
 export function addPhoto(photo) {
   const all = load('photos', []);
-  all.push({ ...photo, created_at: new Date().toISOString() });
+  const newPhoto = { ...photo, created_at: new Date().toISOString() };
+  all.push(newPhoto);
   save('photos', all);
+
+  // Background write to Supabase
+  supabase.from('photos').insert(newPhoto).then(({ error }) => {
+    if (error) console.warn('Supabase addPhoto failed, using offline cache:', error.message);
+  });
+}
+
+/**
+ * Get payments for an event
+ * @param {string} eventId
+ * @returns {Array}
+ */
+export function getPayments(eventId) {
+  const all = load('payments', []);
+  return all.filter(p => p.event_id === eventId);
+}
+
+/**
+ * Add a payment record
+ * @param {Object} payment
+ */
+export function addPayment(payment) {
+  const all = load('payments', []);
+  const newPayment = { ...payment, created_at: new Date().toISOString() };
+  all.push(newPayment);
+  save('payments', all);
+
+  // Background write to Supabase
+  supabase.from('payments').insert(newPayment).then(({ error }) => {
+    if (error) console.warn('Supabase addPayment failed, using offline cache:', error.message);
+  });
 }
 
 /**
@@ -166,6 +292,11 @@ export function registerUser(user) {
   users.push(newUser);
   save('users', users);
   
+  // Background write to Supabase profiles
+  supabase.from('profiles').insert(newUser).then(({ error }) => {
+    if (error) console.warn('Supabase registerUser failed, using offline cache:', error.message);
+  });
+
   // Auto login on signup
   save('session', newUser);
   return { success: true, user: newUser };
@@ -207,4 +338,98 @@ export function getCurrentUser() {
  */
 export function logoutUser() {
   remove('session');
+}
+
+/**
+ * Update a user profile
+ * @param {string} userId
+ * @param {Object} updates
+ */
+export function updateUserProfile(userId, updates) {
+  const users = getUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  
+  if (idx >= 0) {
+    const updatedUser = { ...users[idx], ...updates, updated_at: new Date().toISOString() };
+    users[idx] = updatedUser;
+    save('users', users);
+    
+    // Update active session if it's the current user
+    const currentSession = getCurrentUser();
+    if (currentSession && currentSession.id === userId) {
+      save('session', updatedUser);
+    }
+
+    // Background write to Supabase profiles
+    supabase.from('profiles').update(updates).eq('id', userId).then(({ error }) => {
+      if (error) console.warn('Supabase updateUserProfile failed:', error.message);
+    });
+  }
+}
+
+/**
+ * Merge function to reconcile local storage data with Supabase records
+ */
+function mergeById(localArr, remoteArr) {
+  const map = new Map();
+  localArr.forEach(item => map.set(item.id, item));
+  remoteArr.forEach(item => {
+    const existing = map.get(item.id);
+    map.set(item.id, { ...existing, ...item });
+  });
+  return Array.from(map.values());
+}
+
+/**
+ * Asynchronously sync database tables from Supabase into local storage cache
+ */
+export async function syncWithSupabase() {
+  try {
+    // 1. Sync profiles -> public.profiles
+    const { data: profiles, error: errProfiles } = await supabase.from('profiles').select('*');
+    if (!errProfiles && profiles) {
+      const localUsers = load('users', []);
+      save('users', mergeById(localUsers, profiles));
+    }
+
+    // 2. Sync events -> public.events
+    const { data: events, error: errEvents } = await supabase.from('events').select('*');
+    if (!errEvents && events) {
+      const localEvents = load('events', []);
+      save('events', mergeById(localEvents, events));
+    }
+
+    // 3. Sync rsvps -> public.rsvps
+    const { data: rsvps, error: errRsvps } = await supabase.from('rsvps').select('*');
+    if (!errRsvps && rsvps) {
+      const localRsvps = load('rsvps', []);
+      save('rsvps', mergeById(localRsvps, rsvps));
+    }
+
+    // 4. Sync expenses -> public.expenses
+    const { data: expenses, error: errExpenses } = await supabase.from('expenses').select('*');
+    if (!errExpenses && expenses) {
+      const localExpenses = load('expenses', []);
+      save('expenses', mergeById(localExpenses, expenses));
+    }
+
+    // 5. Sync photos -> public.photos
+    const { data: photos, error: errPhotos } = await supabase.from('photos').select('*');
+    if (!errPhotos && photos) {
+      const localPhotos = load('photos', []);
+      save('photos', mergeById(localPhotos, photos));
+    }
+
+    // 6. Sync payments -> public.payments
+    const { data: payments, error: errPayments } = await supabase.from('payments').select('*');
+    if (!errPayments && payments) {
+      const localPayments = load('payments', []);
+      save('payments', mergeById(localPayments, payments));
+    }
+
+    // Broadcast change to active views
+    window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  } catch (e) {
+    console.warn('Supabase sync database offline fallback:', e);
+  }
 }
