@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import AddressSearch from '../components/AddressSearch';
-import MapPreview from '../components/MapPreview';
+import LocationPicker from '../components/LocationPicker';
 import { generateId, shareLink, shareToWhatsApp } from '../utils/helpers';
 import { saveEvent, getCurrentUser } from '../utils/storage';
 import { DISCOVERY_CITIES, PARTY_THEMES } from '../data/mockData';
@@ -41,6 +41,7 @@ export default function CreatorStudio() {
   const [locationAddress, setLocationAddress] = useState('');
   const [locationLat, setLocationLat] = useState(null);
   const [locationLng, setLocationLng] = useState(null);
+  const [mapTarget, setMapTarget] = useState(null); // fly-to target for the map picker
   const [theme, setTheme] = useState('neon');
   const [vibeOption, setVibeOption] = useState('');
   const [customVibe, setCustomVibe] = useState('');
@@ -377,35 +378,31 @@ export default function CreatorStudio() {
         <AddressSearch
           value={locationAddress}
           placeholder="Search address on OpenStreetMap…"
-          onChange={(v) => {
-            setLocationAddress(v);
-            // Editing the text invalidates a previously picked pin
-            setLocationLat(null);
-            setLocationLng(null);
-          }}
+          onChange={(v) => setLocationAddress(v)}
           onSelect={(place) => {
             setLocationAddress(place.label);
             setLocationLat(place.lat);
             setLocationLng(place.lng);
             if (!locationName.trim()) setLocationName(place.name);
+            // Fly the map to the searched place so the pin can be fine-tuned.
+            setMapTarget({ lat: place.lat, lng: place.lng });
           }}
         />
         <p className="creator-field__hint">
-          Pick a result to drop an exact pin — guests get a live map & directions.
+          Search a place, then drag the map to drop an exact pin. Guests get a live map & directions.
         </p>
       </div>
 
-      {locationLat != null && locationLng != null && (
-        <div className="creator-field">
-          <MapPreview
-            lat={locationLat}
-            lng={locationLng}
-            name={locationName}
-            address={locationAddress}
-            compact
-          />
-        </div>
-      )}
+      <div className="creator-field">
+        <LocationPicker
+          target={mapTarget}
+          onConfirm={({ lat, lng, address }) => {
+            setLocationLat(lat);
+            setLocationLng(lng);
+            if (address) setLocationAddress(address);
+          }}
+        />
+      </div>
     </div>
   );
 

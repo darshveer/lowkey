@@ -47,7 +47,7 @@ export default function NotificationsModal({ isOpen, onClose, notifications = []
   return (
     <div className="notif-modal-overlay" role="dialog" aria-modal="true" aria-label="Notifications">
       <div className="notif-modal-backdrop" onClick={onClose} />
-      <div className="notif-modal glass-strong animate-scale-in" ref={ref}>
+      <div className="notif-modal animate-scale-in" ref={ref}>
         <div className="notif-modal__header">
           <h3 className="notif-modal__title">Notifications</h3>
           <div className="notif-modal__actions">

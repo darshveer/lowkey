@@ -1,0 +1,149 @@
+.loc-picker {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: #10131a;
+  isolation: isolate; /* keep pin/hint stacking local */
+}
+
+.loc-picker__map {
+  width: 100%;
+  height: 300px;
+  background: #10131a;
+  cursor: grab;
+}
+
+.loc-picker__map:active {
+  cursor: grabbing;
+}
+
+/* Fixed center pin — the tip sits exactly on the map center */
+.loc-picker__pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  /* nudge so the emoji's point aligns with the true centre */
+  margin-top: 4px;
+  font-size: 34px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 500;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.55));
+  animation: locPinBob 1.6s var(--ease-out) infinite;
+}
+
+/* subtle drop shadow dot on the ground under the pin */
+.loc-picker__pin::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 10px;
+  height: 4px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  filter: blur(1px);
+}
+
+@keyframes locPinBob {
+  0%, 100% { transform: translate(-50%, -100%); }
+  50% { transform: translate(-50%, -108%); }
+}
+
+.loc-picker__hint {
+  position: absolute;
+  top: var(--space-sm);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(11, 11, 20, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.loc-picker__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: rgba(18, 18, 26, 0.92);
+  border-top: 1px solid var(--glass-border);
+}
+
+.loc-picker__addr {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.loc-picker__addr-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--neon-cyan);
+}
+
+.loc-picker__addr-text {
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+}
+
+.loc-picker__confirm {
+  flex-shrink: 0;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: #fff;
+  background: var(--gradient-primary);
+  transition: transform var(--duration-fast) var(--ease-bounce),
+              box-shadow var(--duration-normal), background var(--duration-normal);
+}
+
+.loc-picker__confirm:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-purple);
+}
+
+.loc-picker__confirm.is-confirmed {
+  background: var(--gradient-lime);
+  color: var(--text-inverse);
+}
+
+/* Leaflet dark-ish tuning + keep controls tappable */
+.loc-picker .leaflet-control-attribution {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.loc-picker .leaflet-bar a {
+  background: #1a1a26;
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.loc-picker .leaflet-bar a:hover {
+  background: #26263a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loc-picker__pin { animation: none; }
+}

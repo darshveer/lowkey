@@ -14,7 +14,9 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  /* Clip horizontally (for step slide animations) but let dropdowns (address
+     autocomplete) overflow vertically so they stay visible. */
+  overflow-x: clip;
   transition: max-width var(--duration-normal) var(--ease-out);
 }
 
