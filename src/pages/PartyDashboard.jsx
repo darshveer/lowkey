@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, uploadPhotoFile, addPayment, getCurrentUser, subscribeToEvent } from '../utils/storage';
-import { generateId, formatDate, formatTime, formatINR, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining } from '../utils/helpers';
+import { generateId, formatDate, formatTime, formatINR, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining, safeUrl } from '../utils/helpers';
 import { calculateSplit } from '../utils/upi';
 import GlassCard from '../components/GlassCard';
 import GlowButton from '../components/GlowButton';
@@ -613,11 +613,11 @@ export default function PartyDashboard() {
                       {event.dj_genre && <span>{event.dj_genre}</span>}
                     </div>
                     <div className="dashboard-brief__dj-links">
-                      {event.dj_profile_url && (
-                        <a href={event.dj_profile_url} target="_blank" rel="noreferrer">Profile</a>
+                      {safeUrl(event.dj_profile_url) && (
+                        <a href={safeUrl(event.dj_profile_url)} target="_blank" rel="noreferrer">Profile</a>
                       )}
-                      {event.dj_instagram && (
-                        <a href={event.dj_instagram} target="_blank" rel="noreferrer">Instagram</a>
+                      {safeUrl(event.dj_instagram) && (
+                        <a href={safeUrl(event.dj_instagram)} target="_blank" rel="noreferrer">Instagram</a>
                       )}
                     </div>
                   </div>
@@ -1007,12 +1007,12 @@ export default function PartyDashboard() {
           <div className="dashboard-tab-panel" key="camera">
             <div className="dashboard-panel-col">
               {/* External Link Overlay */}
-              {event?.external_photo_link ? (
+              {safeUrl(event?.external_photo_link) ? (
                 <div className="dashboard-external-photo-link" style={{ textAlign: 'center', padding: 'var(--space-2xl)', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--glass-border)' }}>
                   <div style={{ fontSize: '48px', marginBottom: 'var(--space-md)' }}>📸</div>
                   <h3 style={{ fontFamily: 'var(--font-display)', marginBottom: 'var(--space-sm)' }}>External Photo Dump</h3>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)' }}>Photos for this party are hosted externally. Upload and view them there!</p>
-                  <a href={event.external_photo_link} target="_blank" rel="noreferrer" style={{ display: 'inline-block', padding: '12px 24px', background: 'var(--gradient-primary)', color: '#fff', borderRadius: 'var(--radius-md)', textDecoration: 'none', fontWeight: 'bold' }}>Open Photo Folder ↗</a>
+                  <a href={safeUrl(event.external_photo_link)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', padding: '12px 24px', background: 'var(--gradient-primary)', color: '#fff', borderRadius: 'var(--radius-md)', textDecoration: 'none', fontWeight: 'bold' }}>Open Photo Folder ↗</a>
                 </div>
               ) : (
                 <>

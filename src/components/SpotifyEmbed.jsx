@@ -1,3 +1,4 @@
+import { safeUrl } from '../utils/helpers';
 import './SpotifyEmbed.css';
 
 /**
@@ -31,7 +32,7 @@ export default function SpotifyEmbed({ playlistUrl, compact = false }) {
       <div className="spotify-embed">
         <a
           className="spotify-embed__link"
-          href={playlistUrl}
+          href={safeUrl(playlistUrl) || `https://open.spotify.com/playlist/${playlistId}`}
           target="_blank"
           rel="noopener noreferrer"
         >

@@ -7,7 +7,7 @@ import MapPreview from '../components/MapPreview';
 import VibeWall from '../components/VibeWall';
 import Reveal from '../components/Reveal';
 import { getEvent, getRSVPs, addRSVP, getCurrentUser } from '../utils/storage';
-import { generateId, formatDate, formatTime, getInitials, getAvatarGradient } from '../utils/helpers';
+import { generateId, formatDate, formatTime, getInitials, getAvatarGradient, safeUrl } from '../utils/helpers';
 import PaymentModal from '../components/PaymentModal';
 import './GuestInvite.css';
 
@@ -302,11 +302,11 @@ export default function GuestInvite() {
                     <h2 className="invite-dj__name">{event.dj_name}</h2>
                     {event.dj_genre && <p className="invite-dj__genre">{event.dj_genre}</p>}
                     <div className="invite-dj__links">
-                      {event.dj_profile_url && (
-                        <a href={event.dj_profile_url} target="_blank" rel="noreferrer">Profile</a>
+                      {safeUrl(event.dj_profile_url) && (
+                        <a href={safeUrl(event.dj_profile_url)} target="_blank" rel="noreferrer">Profile</a>
                       )}
-                      {event.dj_instagram && (
-                        <a href={event.dj_instagram} target="_blank" rel="noreferrer">Instagram</a>
+                      {safeUrl(event.dj_instagram) && (
+                        <a href={safeUrl(event.dj_instagram)} target="_blank" rel="noreferrer">Instagram</a>
                       )}
                     </div>
                   </div>
@@ -342,15 +342,17 @@ export default function GuestInvite() {
           {event.spotify_playlist_url && (
             <div className="invite-section">
               <div className="invite-spotify">
-                <SpotifyEmbed url={event.spotify_playlist_url} compact />
-                <a
-                  className="invite-spotify__cta"
-                  href={event.spotify_playlist_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  🎵 Add your tracks to the collab playlist →
-                </a>
+                <SpotifyEmbed playlistUrl={event.spotify_playlist_url} compact />
+                {safeUrl(event.spotify_playlist_url) && (
+                  <a
+                    className="invite-spotify__cta"
+                    href={safeUrl(event.spotify_playlist_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    🎵 Add your tracks to the collab playlist →
+                  </a>
+                )}
               </div>
             </div>
           )}

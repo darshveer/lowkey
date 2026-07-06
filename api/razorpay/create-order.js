@@ -25,6 +25,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid amount' });
   }
 
+  // SECURITY NOTE (payment integrity): the amount is currently taken from the
+  // client. For production, look up the event server-side (Supabase service key)
+  // and derive the authoritative amount from the event's cover_charge so a user
+  // can't tamper with what they owe. Left as-is while payments are demo/simulated.
+  if (rupees > 1_000_000) {
+    return res.status(400).json({ error: 'Amount exceeds allowed limit' });
+  }
+
   try {
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
     const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {

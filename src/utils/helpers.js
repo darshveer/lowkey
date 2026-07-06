@@ -223,3 +223,17 @@ export function getAvatarGradient(name) {
 export function formatINR(amount) {
   return '₹' + amount.toLocaleString('en-IN');
 }
+
+/**
+ * Sanitize a user-supplied URL for use in href/src. Only http(s) links are
+ * allowed — this blocks `javascript:`, `data:`, `vbscript:` etc. which would
+ * otherwise enable stored XSS via host-controlled fields (DJ links, playlists…).
+ * @param {string} url
+ * @returns {string|undefined} the URL if safe, else undefined (renders no link)
+ */
+export function safeUrl(url) {
+  if (!url || typeof url !== 'string') return undefined;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return undefined;
+}

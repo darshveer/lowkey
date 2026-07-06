@@ -352,13 +352,19 @@ export function addComment(comment) {
 //  Realtime — live RSVPs, photos, and comments per event
 // ============================================================
 
+// Monotonic counter so every subscription gets a UNIQUE channel topic. Multiple
+// components can subscribe to the same event (e.g. the dashboard + the embedded
+// vibe wall) — sharing a topic makes supabase-js throw "cannot add callbacks
+// after subscribe()", which would crash the page.
+let channelSeq = 0;
+
 /**
  * Subscribe to live changes for an event. Pass any of onRsvp / onPhoto / onComment.
  * Each handler receives the Supabase payload ({ eventType, new, old }).
  * @returns {() => void} unsubscribe
  */
 export function subscribeToEvent(eventId, handlers = {}) {
-  const channel = supabase.channel(`event:${eventId}`);
+  const channel = supabase.channel(`event:${eventId}:${++channelSeq}`);
   const tables = { rsvps: handlers.onRsvp, photos: handlers.onPhoto, comments: handlers.onComment };
 
   Object.entries(tables).forEach(([table, handler]) => {
@@ -442,7 +448,7 @@ export function markNotificationsRead(userId) {
 export function subscribeToNotifications(userId, handler) {
   if (!userId) return () => {};
   const channel = supabase
-    .channel(`notifications:${userId}`)
+    .channel(`notifications:${userId}:${++channelSeq}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` },

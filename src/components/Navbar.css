@@ -123,6 +123,9 @@
     top: 12px;
     left: 12px;
     right: 12px;
+    /* Reset the desktop centering transform — we position with left/right here.
+       Without this the bar is shifted half its width off-screen. */
+    transform: none;
     width: auto;
     height: 56px;
     border-radius: var(--radius-full);
