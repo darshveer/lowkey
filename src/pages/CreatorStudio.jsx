@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
-import GlowButton from '../components/GlowButton';
 import { generateId, shareLink, shareToWhatsApp } from '../utils/helpers';
 import { saveEvent, getCurrentUser } from '../utils/storage';
 import { DISCOVERY_CITIES, PARTY_THEMES } from '../data/mockData';

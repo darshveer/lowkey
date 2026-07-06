@@ -102,6 +102,29 @@ export function isPhotoDumpUnlocked(dateStr) {
 }
 
 /**
+ * Countdown label for how long the shared photo dump stays open.
+ * The album lives for 3 days after the party ends.
+ * @param {Object} event - Event with date / time_end / time_end_next_day
+ * @returns {string|null} e.g. "2d 5h", "expired", or null if no date
+ */
+export function getPhotoDumpTimeRemaining(event) {
+  if (!event?.date) return null;
+  const eventEndDate = new Date(event.date);
+  if (event.time_end) {
+    const [h, m] = event.time_end.split(':').map(Number);
+    eventEndDate.setHours(h, m, 0, 0);
+    if (event.time_end_next_day) eventEndDate.setDate(eventEndDate.getDate() + 1);
+  } else {
+    eventEndDate.setDate(eventEndDate.getDate() + 1);
+  }
+  const diffMs = (eventEndDate.getTime() + 3 * 24 * 60 * 60 * 1000) - new Date().getTime();
+  if (diffMs <= 0) return 'expired';
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  return `${days}d ${hours}h`;
+}
+
+/**
  * Generate Google Maps directions URL
  * @param {number} lat
  * @param {number} lng

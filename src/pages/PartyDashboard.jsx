@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, addPayment, getCurrentUser } from '../utils/storage';
-import { generateId, formatDate, formatTime, formatINR, getDirectionsUrl, getInitials, getAvatarGradient } from '../utils/helpers';
+import { generateId, formatDate, formatTime, formatINR, getDirectionsUrl, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining } from '../utils/helpers';
 import { calculateSplit } from '../utils/upi';
 import { MOCK_EVENT_ACTIVE, MOCK_RSVPS, MOCK_EXPENSES } from '../data/mockData';
 import GlassCard from '../components/GlassCard';
@@ -131,7 +131,7 @@ export default function PartyDashboard() {
 
   const handlePaymentSuccess = ({ gateway, transactionId }) => {
     const paymentData = {
-      id: 'pay_' + Math.random().toString(36).substring(2, 11),
+      id: 'pay_' + generateId(),
       rsvp_id: null,
       event_id: event.id,
       amount: splitAmount,
@@ -199,7 +199,7 @@ export default function PartyDashboard() {
     try {
       const stored = JSON.parse(localStorage.getItem('lowkey_expenses') || '[]');
       localStorage.setItem('lowkey_expenses', JSON.stringify(stored.filter(e => e.id !== id)));
-    } catch (_) {}
+    } catch { /* ignore persistence errors */ }
     showToast('Expense removed.');
   }
 
@@ -219,7 +219,7 @@ export default function PartyDashboard() {
           : exp
       );
       localStorage.setItem('lowkey_expenses', JSON.stringify(updated));
-    } catch (_) {}
+    } catch { /* ignore persistence errors */ }
     setEditingExpenseId(null);
     showToast('Expense updated!');
   }
@@ -944,21 +944,7 @@ export default function PartyDashboard() {
                 <PhotoGrid 
                   photos={photos} 
                   isLocked={isPhotoLocked} 
-                  timeRemaining={event?.date ? (() => {
-                    const eventEndDate = new Date(event.date);
-                    if (event.time_end) {
-                      const [h, m] = event.time_end.split(':').map(Number);
-                      eventEndDate.setHours(h, m, 0, 0);
-                      if (event.time_end_next_day) eventEndDate.setDate(eventEndDate.getDate() + 1);
-                    } else {
-                      eventEndDate.setDate(eventEndDate.getDate() + 1);
-                    }
-                    const diffMs = (eventEndDate.getTime() + 3 * 24 * 60 * 60 * 1000) - Date.now();
-                    if (diffMs <= 0) return 'expired';
-                    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    return `${days}d ${hours}h`;
-                  })() : null}
+                  timeRemaining={getPhotoDumpTimeRemaining(event)}
                 />
               ) : (
                 /* Placeholder photo cards */

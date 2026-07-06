@@ -1,11 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  getEvents, 
-  getCurrentUser, 
-  logoutUser, 
-  loginUser, 
-  registerUser 
+import {
+  getEvents,
+  loginUser,
+  registerUser
 } from '../utils/storage';
 import { DISCOVERY_CITIES } from '../data/mockData';
 import { formatDate, formatTime, formatINR } from '../utils/helpers';
@@ -80,12 +78,6 @@ function Home({
       })
       .filter(Boolean);
   }, [events, currentUser]);
-
-  const handleLogout = () => {
-    logoutUser();
-    setCurrentUser(null);
-    setActiveTab('discover');
-  };
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();

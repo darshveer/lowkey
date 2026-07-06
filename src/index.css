@@ -659,6 +659,48 @@ h6 { font-size: var(--text-lg); }
   border-width: 0;
 }
 
+/* ---- Accessible Focus States ---- */
+:focus-visible {
+  outline: 2px solid var(--neon-purple);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Keyboard focus for glass inputs gets the neon ring treatment */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+}
+
+/* ---- Text Selection ---- */
+::selection {
+  background: rgba(139, 92, 246, 0.4);
+  color: var(--text-primary);
+}
+
+/* ---- Reduced Motion (respect user preference) ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-scale-in,
+  .animate-bounce-in,
+  .stagger > * {
+    opacity: 1 !important;
+  }
+}
+
 /* ---- Footer Culture ---- */
 .footer-culture {
   text-align: center;

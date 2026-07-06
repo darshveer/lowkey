@@ -34,14 +34,20 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
   // 1. Generate QR Code
   useEffect(() => {
     if (!isOpen || !upiId) return;
-    
-    let cancelled = false;
-    setQrLoading(true);
-    setQrError(null);
 
-    generateUPIQR({ vpa: upiId, name: payeeName, amount, note })
+    let cancelled = false;
+
+    // Kick off generation on the microtask queue so we avoid a synchronous
+    // setState inside the effect body (which triggers cascading renders).
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return null;
+        setQrLoading(true);
+        setQrError(null);
+        return generateUPIQR({ vpa: upiId, name: payeeName, amount, note });
+      })
       .then((dataUrl) => {
-        if (!cancelled) {
+        if (!cancelled && dataUrl) {
           setQrDataUrl(dataUrl);
           setQrLoading(false);
         }

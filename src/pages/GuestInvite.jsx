@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
-import PollSelector from '../components/PollSelector';
 import AvatarStack from '../components/AvatarStack';
 import SpotifyEmbed from '../components/SpotifyEmbed';
-import { getEvent, getRSVPs, addRSVP, getCurrentUser, addPayment } from '../utils/storage';
+import { getEvent, getRSVPs, addRSVP, getCurrentUser } from '../utils/storage';
 import { generateId, formatDate, formatTime, getInitials, getAvatarGradient } from '../utils/helpers';
 import { MOCK_EVENT, MOCK_RSVPS } from '../data/mockData';
 import PaymentModal from '../components/PaymentModal';
@@ -46,8 +45,6 @@ export default function GuestInvite() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingRsvp, setPendingRsvp] = useState(null);
-
-  if (!event) return null;
 
   const existingRsvp = currentUser ? rsvps.find(r => r.user_id === currentUser.id) : null;
   const isEditingRsvp = !!existingRsvp;
@@ -179,7 +176,7 @@ export default function GuestInvite() {
     if (!pendingRsvp) return;
 
     const paymentData = {
-      id: 'pay_' + Math.random().toString(36).substring(2, 11),
+      id: 'pay_' + generateId(),
       rsvp_id: pendingRsvp.id,
       event_id: event.id,
       amount: event.cover_charge * (pendingRsvp._additionalGuests || pendingRsvp.guest_count),
