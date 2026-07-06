@@ -817,3 +817,11 @@
   text-shadow: 0 0 8px rgba(204, 255, 0, 0.25);
   letter-spacing: 0.02em;
 }
+
+/* Address search hint */
+.creator-field__hint {
+  margin-top: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}

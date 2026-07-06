@@ -8,6 +8,8 @@ import {
 import { DISCOVERY_CITIES } from '../data/mockData';
 import { formatDate, formatTime, formatINR } from '../utils/helpers';
 import SvgDecor from '../components/SvgDecor';
+import Reveal from '../components/Reveal';
+import Logo from '../components/Logo';
 import './Home.css';
 
 function Home({
@@ -38,6 +40,8 @@ function Home({
   // Auth states
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
@@ -79,26 +83,33 @@ function Home({
       .filter(Boolean);
   }, [events, currentUser]);
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
-    const res = loginUser(loginUsername, loginPassword);
-    if (res.success) {
-      setCurrentUser(res.user);
-      if (loginRedirect) {
-        setLoginRedirect(false);
-        navigate('/create');
+    setAuthNotice('');
+    setAuthSubmitting(true);
+    try {
+      const res = await loginUser(loginUsername, loginPassword);
+      if (res.success) {
+        setCurrentUser(res.user);
+        if (loginRedirect) {
+          setLoginRedirect(false);
+          navigate('/create');
+        } else {
+          setActiveTab('discover');
+        }
       } else {
-        setActiveTab('discover');
+        setAuthError(res.error);
       }
-    } else {
-      setAuthError(res.error);
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthNotice('');
     if (!signupUsername || !signupEmail || !signupName || !signupPassword || !signupDob) {
       setAuthError('Please fill in all required fields.');
       return;
@@ -113,8 +124,19 @@ function Home({
       phone: signupPhone
     };
 
-    const res = registerUser(newUser);
-    if (res.success) {
+    setAuthSubmitting(true);
+    try {
+      const res = await registerUser(newUser);
+      if (!res.success) {
+        setAuthError(res.error);
+        return;
+      }
+      if (res.needsConfirmation) {
+        // Email confirmation is enabled on the Supabase project.
+        setAuthNotice('Almost there! Check your email to confirm your account, then log in.');
+        setIsSignUp(false);
+        return;
+      }
       setCurrentUser(res.user);
       if (loginRedirect) {
         setLoginRedirect(false);
@@ -122,8 +144,8 @@ function Home({
       } else {
         setActiveTab('discover');
       }
-    } else {
-      setAuthError(res.error);
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
@@ -139,6 +161,7 @@ function Home({
         {/* Brand Header */}
         <header className="home-header animate-fade-in-up">
           <SvgDecor variant="hero" />
+          <Logo size={72} className="home-logo__mark" />
           <div className="home-logo">
             <span className="home-logo__text brand-cursive text-gradient">lowkey</span>
           </div>
@@ -201,9 +224,12 @@ function Home({
 
             {discoverableEvents.length > 0 ? (
               <div className="home-discovery-grid">
-                {discoverableEvents.map(event => (
-                  <Link
+                {discoverableEvents.map((event, i) => (
+                  <Reveal
+                    as={Link}
                     key={event.id}
+                    variant="up"
+                    delay={Math.min(i * 60, 360)}
                     to={`/invite/${event.id}`}
                     className={`home-discovery-card pressable ${event.theme ? `theme-${event.theme}` : 'theme-neon'}`}
                   >
@@ -228,7 +254,7 @@ function Home({
                         {event.has_personal_dj && <span>DJ set</span>}
                       </div>
                     </div>
-                  </Link>
+                  </Reveal>
                 ))}
               </div>
             ) : (
@@ -256,54 +282,54 @@ function Home({
           <SvgDecor variant="section" />
 
           {/* Clean Features Grid */}
-          <section className="home-features-clean stagger" style={{ animationDelay: '260ms' }}>
-            <h3 className="home-section-title">Built for the Culture</h3>
+          <section className="home-features-clean">
+            <Reveal as="h3" className="home-section-title" variant="up">Built for the Culture</Reveal>
             <div className="home-features-clean__grid">
-              <div className="home-feature-clean">
-                <div className="feature-marker" />
-                <div>
-                  <h4 className="home-feature__title">WhatsApp Invites</h4>
-                  <p className="home-feature__desc">Drop a clean invite link. Guests verify and RSVP in seconds.</p>
-                </div>
-              </div>
-              <div className="home-feature-clean">
-                <div className="feature-marker" />
-                <div>
-                  <h4 className="home-feature__title">The Expense Kitty</h4>
-                  <p className="home-feature__desc">Split party costs, generate UPI QR codes, and track settlements.</p>
-                </div>
-              </div>
-              <div className="home-feature-clean">
-                <div className="feature-marker" />
-                <div>
-                  <h4 className="home-feature__title">Live Camera Dump</h4>
-                  <p className="home-feature__desc">A shared roll of film-filtered photos that unlocks after 2 AM.</p>
-                </div>
-              </div>
-              <div className="home-feature-clean">
-                <div className="feature-marker" />
-                <div>
-                  <h4 className="home-feature__title">DJs & Playlists</h4>
-                  <p className="home-feature__desc">Showcase the decks with artist profiles, vibes, and Spotify playlists.</p>
-                </div>
-              </div>
+              {[
+                { title: 'WhatsApp Invites', desc: 'Drop a clean invite link. Guests verify and RSVP in seconds.' },
+                { title: 'The Expense Kitty', desc: 'Split party costs, generate UPI QR codes, and track settlements.' },
+                { title: 'Live Camera Dump', desc: 'A shared roll of film-filtered photos that unlocks after 2 AM.' },
+                { title: 'DJs & Playlists', desc: 'Showcase the decks with artist profiles, vibes, and Spotify playlists.' },
+              ].map((f, i) => (
+                <Reveal key={f.title} className="home-feature-clean" variant="up" delay={i * 90}>
+                  <div className="feature-marker" />
+                  <div>
+                    <h4 className="home-feature__title">{f.title}</h4>
+                    <p className="home-feature__desc">{f.desc}</p>
+                  </div>
+                </Reveal>
+              ))}
             </div>
           </section>
 
           <SvgDecor variant="section" />
 
-          {/* Demo Section */}
-          <section className="home-demo animate-fade-in-up" style={{ animationDelay: '350ms' }}>
-            <h3 className="home-section-title">Quick Demo Links</h3>
+          {/* Host CTA Section */}
+          <Reveal as="section" className="home-demo" variant="up">
+            <h3 className="home-section-title">Throw your own</h3>
             <div className="stack stack-sm">
-              <Link to="/invite/party_xK9mQ2" className="home-demo-link glass pressable">
-                Guest Invite Page
-              </Link>
-              <Link to="/party/party_aB3nY7" className="home-demo-link glass pressable">
-                Host Dashboard (Live)
-              </Link>
+              <button
+                className="home-demo-link glass pressable"
+                type="button"
+                onClick={() => {
+                  if (currentUser) {
+                    navigate('/create');
+                  } else {
+                    setLoginRedirect(true);
+                    setAuthError('');
+                    setActiveTab('login');
+                  }
+                }}
+              >
+                ✨ Create a party
+              </button>
+              {currentUser && (
+                <Link to="/profile" className="home-demo-link glass pressable">
+                  👤 Your profile & achievements
+                </Link>
+              )}
             </div>
-          </section>
+          </Reveal>
         </>
       )}
 
@@ -316,6 +342,7 @@ function Home({
             </p>
 
             {authError && <div className="auth-error" role="alert">{authError}</div>}
+            {authNotice && <div className="auth-notice" role="status">{authNotice}</div>}
 
             {isSignUp ? (
               <form onSubmit={handleRegisterSubmit} className="auth-form">
@@ -389,20 +416,22 @@ function Home({
                     autoComplete="new-password"
                   />
                 </div>
-                <button type="submit" className="auth-submit-btn">Sign Up</button>
+                <button type="submit" className="auth-submit-btn" disabled={authSubmitting}>
+                  {authSubmitting ? 'Creating account…' : 'Sign Up'}
+                </button>
               </form>
             ) : (
               <form onSubmit={handleLoginSubmit} className="auth-form">
                 <div className="form-group">
-                  <label htmlFor="login-username">Username or Email *</label>
+                  <label htmlFor="login-username">Email *</label>
                   <input
                     id="login-username"
-                    type="text"
+                    type="email"
                     required
-                    placeholder="arjun or arjun@lowkey.com"
+                    placeholder="you@email.com"
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
-                    autoComplete="username"
+                    autoComplete="email"
                   />
                 </div>
                 <div className="form-group">
@@ -417,7 +446,9 @@ function Home({
                     autoComplete="current-password"
                   />
                 </div>
-                <button type="submit" className="auth-submit-btn">Log In</button>
+                <button type="submit" className="auth-submit-btn" disabled={authSubmitting}>
+                  {authSubmitting ? 'Logging in…' : 'Log In'}
+                </button>
               </form>
             )}
 

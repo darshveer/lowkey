@@ -1,9 +1,8 @@
-import { useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, addPayment, getCurrentUser } from '../utils/storage';
-import { generateId, formatDate, formatTime, formatINR, getDirectionsUrl, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining } from '../utils/helpers';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, uploadPhotoFile, addPayment, getCurrentUser, subscribeToEvent } from '../utils/storage';
+import { generateId, formatDate, formatTime, formatINR, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining } from '../utils/helpers';
 import { calculateSplit } from '../utils/upi';
-import { MOCK_EVENT_ACTIVE, MOCK_RSVPS, MOCK_EXPENSES } from '../data/mockData';
 import GlassCard from '../components/GlassCard';
 import GlowButton from '../components/GlowButton';
 import CountdownTimer from '../components/CountdownTimer';
@@ -11,6 +10,8 @@ import UPIQRCode from '../components/UPIQRCode';
 import PhotoGrid from '../components/PhotoGrid';
 import PlusOneSwiper from '../components/PlusOneSwiper';
 import PaymentModal from '../components/PaymentModal';
+import MapPreview from '../components/MapPreview';
+import VibeWall from '../components/VibeWall';
 import SvgDecor from '../components/SvgDecor';
 import './PartyDashboard.css';
 
@@ -76,19 +77,51 @@ const TABS = [
 export default function PartyDashboard() {
   const { eventId } = useParams();
   const [activeTab, setActiveTab] = useState('overview');
-  const [event, setEvent] = useState(() => getEvent(eventId) || MOCK_EVENT_ACTIVE);
-  const [rsvps, setRsvps] = useState(() => {
-    const storedRSVPs = getRSVPs(eventId);
-    return storedRSVPs.length ? storedRSVPs : MOCK_RSVPS;
-  });
-  const [expenses, setExpenses] = useState(() => {
-    const storedExpenses = getExpenses(eventId);
-    return storedExpenses.length ? storedExpenses : MOCK_EXPENSES;
-  });
+  const [event, setEvent] = useState(() => getEvent(eventId));
+
+  // Tint ambient FX (cursor glow + background) to this party's theme.
+  useEffect(() => {
+    const theme = event?.theme || 'neon';
+    document.documentElement.setAttribute('data-party-theme', theme);
+    return () => document.documentElement.removeAttribute('data-party-theme');
+  }, [event?.theme]);
+
+  const [rsvps, setRsvps] = useState(() => getRSVPs(eventId));
+  const [expenses, setExpenses] = useState(() => getExpenses(eventId));
   const [photos, setPhotos] = useState(() => {
     const storedPhotos = getPhotos(eventId);
     return storedPhotos.length ? storedPhotos : [];
   });
+
+  // ---- Realtime: live RSVPs & photo feed for this party ----
+  useEffect(() => {
+    const evId = event?.id || eventId;
+    if (!evId) return;
+    return subscribeToEvent(evId, {
+      onRsvp: (payload) => {
+        if (payload.eventType === 'DELETE') {
+          setRsvps(prev => prev.filter(r => r.id !== payload.old?.id));
+          return;
+        }
+        const row = payload.new;
+        if (!row) return;
+        setRsvps(prev => {
+          const idx = prev.findIndex(r => r.id === row.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], ...row };
+            return copy;
+          }
+          return [...prev, row];
+        });
+      },
+      onPhoto: (payload) => {
+        const row = payload.new;
+        if (!row || payload.eventType === 'DELETE') return;
+        setPhotos(prev => (prev.some(p => p.id === row.id) ? prev : [...prev, row]));
+      },
+    });
+  }, [event?.id, eventId]);
 
   /* Expense form */
   const [expenseDesc, setExpenseDesc] = useState('');
@@ -128,6 +161,22 @@ export default function PartyDashboard() {
   // Payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentUser] = useState(() => getCurrentUser());
+
+  // Party doesn't exist — all hooks are declared above this guard.
+  if (!event) {
+    return (
+      <div className="page">
+        <div className="dashboard-notfound glass-strong">
+          <div className="dashboard-notfound__emoji" aria-hidden="true">🎈</div>
+          <h1 className="dashboard-notfound__title">Party not found</h1>
+          <p className="dashboard-notfound__text">
+            This dashboard doesn't exist anymore, or you opened a stale link.
+          </p>
+          <Link to="/" className="dashboard-notfound__btn">Back to LowKey →</Link>
+        </div>
+      </div>
+    );
+  }
 
   const handlePaymentSuccess = ({ gateway, transactionId }) => {
     const paymentData = {
@@ -231,6 +280,14 @@ export default function PartyDashboard() {
     setShowAddExpense(false);
   }
 
+  // ---- Settlement handler ----
+  function handleToggleSettled(rsvp) {
+    const settled = !rsvp.settled;
+    setRsvps(prev => prev.map(r => (r.id === rsvp.id ? { ...r, settled } : r)));
+    updateRSVP(rsvp.id, { settled });
+    showToast(settled ? `${rsvp.guest_name} marked paid ✓` : `${rsvp.guest_name} marked unpaid`);
+  }
+
   // ---- Guest List Handlers ----
   function handleSaveEditGuest(rsvpId) {
     const trimmedName = editGuestName.trim();
@@ -278,28 +335,38 @@ export default function PartyDashboard() {
   }
 
   // ---- Photo handlers ----
-  function handlePhotoUpload(e) {
+  async function handlePhotoUpload(e) {
     const files = e.target.files;
     if (!files?.length) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result;
-        const newPhoto = {
-          id: `photo_${generateId()}`,
-          event_id: event?.id || eventId,
-          uploaded_by: currentUser?.name || 'Guest',
-          photo_url: base64String,
-          caption: file.name.split('.')[0],
-          filter: 'raw',
-          created_at: new Date().toISOString(),
-        };
-        addPhoto(newPhoto);
-        setPhotos(prev => [...prev, newPhoto]);
+    const evId = event?.id || eventId;
+    showToast('📸 Uploading…');
+
+    for (const file of Array.from(files)) {
+      // Prefer Supabase Storage (real hosting); fall back to an inline base64 copy.
+      const uploaded = await uploadPhotoFile(file, evId);
+      const photoUrl =
+        uploaded?.url ||
+        (await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        }));
+
+      const newPhoto = {
+        id: `photo_${generateId()}`,
+        event_id: evId,
+        uploaded_by: currentUser?.name || 'Guest',
+        uploaded_by_id: currentUser?.id || null,
+        storage_path: uploaded?.path || null,
+        photo_url: photoUrl,
+        caption: file.name.split('.')[0],
+        filter: 'raw',
+        created_at: new Date().toISOString(),
       };
-      reader.readAsDataURL(file);
-    });
+      addPhoto(newPhoto);
+      setPhotos(prev => [...prev, newPhoto]);
+    }
 
     showToast('📸 Photo uploaded!');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -557,17 +624,30 @@ export default function PartyDashboard() {
                 )}
               </Card>
 
-              {/* Directions Button */}
-              {event.location_lat && event.location_lng && (
-                <div className="dashboard-directions-btn" style={{ marginTop: 'var(--space-lg)' }}>
-                  <Btn
-                    variant="blue"
-                    onClick={() => window.open(getDirectionsUrl(event.location_lat, event.location_lng), '_blank')}
-                  >
-                    Get Directions 📍
-                  </Btn>
+              {/* Venue map + directions (OpenStreetMap) */}
+              {(event.location_name || event.location_address) && (
+                <div style={{ marginTop: 'var(--space-lg)' }}>
+                  <MapPreview
+                    lat={event.location_lat}
+                    lng={event.location_lng}
+                    name={event.location_name}
+                    address={event.location_address}
+                    compact
+                  />
                 </div>
               )}
+
+              {/* Live vibe wall */}
+              <div style={{ marginTop: 'var(--space-lg)' }}>
+                <h3 className="dashboard-section-subtitle" style={{ marginBottom: 'var(--space-sm)' }}>Vibe Wall</h3>
+                <Card>
+                  <VibeWall
+                    eventId={event.id}
+                    authorName={currentUser ? currentUser.name : event.host_name}
+                    authorId={currentUser ? currentUser.id : null}
+                  />
+                </Card>
+              </div>
             </div>
 
             <div className="dashboard-panel-col">
@@ -881,6 +961,43 @@ export default function PartyDashboard() {
                   </Btn>
                 </div>
               </div>
+
+              {/* Settlement tracker — who's paid their share */}
+              {goingRsvps.length > 0 && (
+                <div className="dashboard-settle">
+                  <div className="dashboard-settle__head">
+                    <h4 className="dashboard-settle__title">Settlements</h4>
+                    <span className="dashboard-settle__count">
+                      {goingRsvps.filter(r => r.settled).length}/{goingRsvps.length} paid
+                    </span>
+                  </div>
+                  <div className="dashboard-settle__bar">
+                    <div
+                      className="dashboard-settle__bar-fill"
+                      style={{ width: `${Math.round((goingRsvps.filter(r => r.settled).length / goingRsvps.length) * 100)}%` }}
+                    />
+                  </div>
+                  <ul className="dashboard-settle__list">
+                    {goingRsvps.map(r => {
+                      const owed = splitAmount * (r.guest_count || 1);
+                      return (
+                        <li key={r.id} className={`dashboard-settle__row ${r.settled ? 'is-paid' : ''}`}>
+                          <span className="dashboard-settle__name">{r.guest_name}</span>
+                          <span className="dashboard-settle__amt">{formatINR(owed)}</span>
+                          <button
+                            type="button"
+                            className={`dashboard-settle__toggle ${r.settled ? 'is-paid' : ''}`}
+                            onClick={() => handleToggleSettled(r)}
+                            aria-pressed={!!r.settled}
+                          >
+                            {r.settled ? '✓ Paid' : 'Mark paid'}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}

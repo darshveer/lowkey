@@ -98,6 +98,33 @@
   --z-overlay: 500;
   --z-modal: 1000;
   --z-toast: 2000;
+
+  /* FX accents (cursor glow + animated background). Overridden per party theme
+     via [data-party-theme] so ambient effects match the event you're viewing. */
+  --fx-accent-1: #8B5CF6;
+  --fx-accent-2: #4D7CFF;
+  --fx-accent-3: #FF007F;
+  --fx-accent-ring: #CCFF00;
+}
+
+/* Per-theme FX palettes */
+:root[data-party-theme="retro"] {
+  --fx-accent-1: #FF6B6B;
+  --fx-accent-2: #FFB84D;
+  --fx-accent-3: #8B5CF6;
+  --fx-accent-ring: #FFD24D;
+}
+:root[data-party-theme="psychedelic"] {
+  --fx-accent-1: #00D4FF;
+  --fx-accent-2: #CCFF00;
+  --fx-accent-3: #FF007F;
+  --fx-accent-ring: #00D4FF;
+}
+:root[data-party-theme="minimal"] {
+  --fx-accent-1: #9AA0B4;
+  --fx-accent-2: #6E7488;
+  --fx-accent-3: #8B5CF6;
+  --fx-accent-ring: #E6E6FA;
 }
 
 /* ---- Reset & Base ---- */

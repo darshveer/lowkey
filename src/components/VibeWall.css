@@ -1,0 +1,114 @@
+.vibe-wall {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.vibe-wall__form {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.vibe-wall__input {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+}
+
+.vibe-wall__send {
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: #fff;
+  background: var(--gradient-primary);
+  transition: transform var(--duration-fast) var(--ease-bounce), box-shadow var(--duration-normal);
+}
+
+.vibe-wall__send:hover:not(:disabled) {
+  box-shadow: var(--shadow-glow-purple);
+  transform: translateY(-1px);
+}
+
+.vibe-wall__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vibe-wall__empty {
+  text-align: center;
+  padding: var(--space-lg);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.vibe-wall__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.vibe-wall__item {
+  display: flex;
+  gap: var(--space-sm);
+  animation: fadeInUp var(--duration-normal) var(--ease-out);
+}
+
+.vibe-wall__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.vibe-wall__bubble {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  min-width: 0;
+}
+
+.vibe-wall__meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: 2px;
+}
+
+.vibe-wall__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.vibe-wall__time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.vibe-wall__body {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vibe-wall__item { animation: none; }
+}

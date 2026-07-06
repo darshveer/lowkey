@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import AvatarStack from '../components/AvatarStack';
 import SpotifyEmbed from '../components/SpotifyEmbed';
+import MapPreview from '../components/MapPreview';
+import VibeWall from '../components/VibeWall';
+import Reveal from '../components/Reveal';
 import { getEvent, getRSVPs, addRSVP, getCurrentUser } from '../utils/storage';
 import { generateId, formatDate, formatTime, getInitials, getAvatarGradient } from '../utils/helpers';
-import { MOCK_EVENT, MOCK_RSVPS } from '../data/mockData';
 import PaymentModal from '../components/PaymentModal';
 import './GuestInvite.css';
 
@@ -32,12 +34,9 @@ export default function GuestInvite() {
   const { eventId } = useParams();
   const [currentUser] = useState(() => getCurrentUser());
 
-  // Event & RSVP data
-  const [event] = useState(() => getEvent(eventId) || MOCK_EVENT);
-  const [rsvps, setRsvps] = useState(() => {
-    const storedRsvps = getRSVPs(eventId);
-    return storedRsvps.length > 0 ? storedRsvps : MOCK_RSVPS;
-  });
+  // Event & RSVP data (real data only — null if the party doesn't exist)
+  const [event] = useState(() => getEvent(eventId));
+  const [rsvps, setRsvps] = useState(() => getRSVPs(eventId));
 
   const [submitted, setSubmitted] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -49,8 +48,15 @@ export default function GuestInvite() {
   const existingRsvp = currentUser ? rsvps.find(r => r.user_id === currentUser.id) : null;
   const isEditingRsvp = !!existingRsvp;
 
-  // Derived data
-  const themeClass = `theme-${event.theme || 'neon'}`;
+  // Tint the ambient FX (cursor glow + background) to match this party's theme.
+  useEffect(() => {
+    const theme = event?.theme || 'neon';
+    document.documentElement.setAttribute('data-party-theme', theme);
+    return () => document.documentElement.removeAttribute('data-party-theme');
+  }, [event?.theme]);
+
+  // Derived data (null-safe — event may not exist)
+  const themeClass = `theme-${event?.theme || 'neon'}`;
   const goingCount = rsvps
     .filter(r => r.status === 'going' && (!existingRsvp || r.id !== existingRsvp.id))
     .reduce((sum, r) => sum + (r.guest_count || 1), 0);
@@ -59,7 +65,7 @@ export default function GuestInvite() {
     .filter(r => r.status === 'going')
     .map(r => r.guest_name);
 
-  const availableCapacity = event.capacity ? Math.max(0, event.capacity - goingCount) : Infinity;
+  const availableCapacity = event?.capacity ? Math.max(0, event.capacity - goingCount) : Infinity;
 
   // Form state overriding with existing RSVP data if present
   const [guestName, setGuestName] = useState(() => existingRsvp ? existingRsvp.guest_name : (currentUser ? currentUser.name : ''));
@@ -209,6 +215,22 @@ export default function GuestInvite() {
     setPendingRsvp(null);
   };
 
+  // Party doesn't exist (bad link or removed) — show a friendly not-found state.
+  if (!event) {
+    return (
+      <div className="page">
+        <div className="invite-notfound glass-strong">
+          <div className="invite-notfound__emoji" aria-hidden="true">🕳️</div>
+          <h1 className="invite-notfound__title">This party isn't here</h1>
+          <p className="invite-notfound__text">
+            The link may be broken, or the host wrapped things up. Check the invite link and try again.
+          </p>
+          <Link to="/" className="invite-notfound__btn">Discover other parties →</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       {/* ====== HERO SECTION ====== */}
@@ -294,7 +316,7 @@ export default function GuestInvite() {
           )}
 
           {/* ---- Who's Going ---- */}
-          <div className="invite-section">
+          <Reveal className="invite-section" variant="up">
             <h2 className="invite-section__title">Who's Going</h2>
             <div className="invite-going">
               <AvatarStack names={guestNames} maxDisplay={6} size="md" />
@@ -303,17 +325,47 @@ export default function GuestInvite() {
                 {maybeCount > 0 && <> · {maybeCount} maybe</>}
               </p>
             </div>
-          </div>
+          </Reveal>
+
+          {/* ---- Getting There (OpenStreetMap) ---- */}
+          <Reveal className="invite-section" variant="left">
+            <h2 className="invite-section__title">Getting There</h2>
+            <MapPreview
+              lat={event.location_lat}
+              lng={event.location_lng}
+              name={event.location_name}
+              address={event.location_address}
+            />
+          </Reveal>
 
           {/* ---- Spotify Section ---- */}
           {event.spotify_playlist_url && (
             <div className="invite-section">
               <div className="invite-spotify">
                 <SpotifyEmbed url={event.spotify_playlist_url} compact />
-                <p className="invite-spotify__cta">Add your tracks</p>
+                <a
+                  className="invite-spotify__cta"
+                  href={event.spotify_playlist_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  🎵 Add your tracks to the collab playlist →
+                </a>
               </div>
             </div>
           )}
+
+          {/* ---- Vibe Wall ---- */}
+          <Reveal className="invite-section" variant="left">
+            <h2 className="invite-section__title">Vibe Wall</h2>
+            <GlassCard>
+              <VibeWall
+                eventId={event.id}
+                authorName={currentUser ? currentUser.name : guestName}
+                authorId={currentUser ? currentUser.id : null}
+              />
+            </GlassCard>
+          </Reveal>
         </div>
 
         <div className="invite-body-col">

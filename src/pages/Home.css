@@ -39,6 +39,17 @@
   z-index: 1;
 }
 
+.home-logo__mark {
+  display: block;
+  margin: 0 auto var(--space-md);
+  filter: drop-shadow(0 8px 24px rgba(139, 92, 246, 0.35));
+  animation: float 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-logo__mark { animation: none; }
+}
+
 .home-logo__text {
   font-family: var(--font-display);
   font-size: var(--text-5xl);
@@ -575,6 +586,17 @@
   text-align: center;
 }
 
+.auth-notice {
+  background: rgba(204, 255, 0, 0.1);
+  border: 1px solid rgba(204, 255, 0, 0.3);
+  color: var(--neon-lime);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -628,6 +650,11 @@
   transition: transform var(--duration-fast) var(--ease-bounce), box-shadow var(--duration-normal) var(--ease-out);
   box-shadow: var(--shadow-glow-purple);
   margin-top: var(--space-md);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .auth-submit-btn:active {

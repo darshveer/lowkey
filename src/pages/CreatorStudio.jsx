@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import AddressSearch from '../components/AddressSearch';
+import MapPreview from '../components/MapPreview';
 import { generateId, shareLink, shareToWhatsApp } from '../utils/helpers';
 import { saveEvent, getCurrentUser } from '../utils/storage';
 import { DISCOVERY_CITIES, PARTY_THEMES } from '../data/mockData';
@@ -37,6 +39,8 @@ export default function CreatorStudio() {
   const [city, setCity] = useState('Bengaluru');
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
+  const [locationLat, setLocationLat] = useState(null);
+  const [locationLng, setLocationLng] = useState(null);
   const [theme, setTheme] = useState('neon');
   const [vibeOption, setVibeOption] = useState('');
   const [customVibe, setCustomVibe] = useState('');
@@ -178,6 +182,8 @@ export default function CreatorStudio() {
       city,
       location_name: locationName.trim(),
       location_address: locationAddress.trim(),
+      location_lat: locationLat,
+      location_lng: locationLng,
       theme,
       spotify_playlist_url: spotifyUrl.trim() || null,
       upi_id: upiId.trim() || null,
@@ -368,14 +374,38 @@ export default function CreatorStudio() {
 
       <div className="creator-field">
         <label className="creator-field__label">Address</label>
-        <input
-          className="input-glass"
-          type="text"
-          placeholder="full address for directions"
+        <AddressSearch
           value={locationAddress}
-          onChange={(e) => setLocationAddress(e.target.value)}
+          placeholder="Search address on OpenStreetMap…"
+          onChange={(v) => {
+            setLocationAddress(v);
+            // Editing the text invalidates a previously picked pin
+            setLocationLat(null);
+            setLocationLng(null);
+          }}
+          onSelect={(place) => {
+            setLocationAddress(place.label);
+            setLocationLat(place.lat);
+            setLocationLng(place.lng);
+            if (!locationName.trim()) setLocationName(place.name);
+          }}
         />
+        <p className="creator-field__hint">
+          Pick a result to drop an exact pin — guests get a live map & directions.
+        </p>
       </div>
+
+      {locationLat != null && locationLng != null && (
+        <div className="creator-field">
+          <MapPreview
+            lat={locationLat}
+            lng={locationLng}
+            name={locationName}
+            address={locationAddress}
+            compact
+          />
+        </div>
+      )}
     </div>
   );
 

@@ -3,8 +3,10 @@
  * Provides typed get/set with JSON serialization and background Supabase persistence
  */
 import { supabase } from './supabase';
+import { generateId } from './helpers';
 
 const STORAGE_PREFIX = 'lowkey_';
+const PHOTO_BUCKET = 'party-photos';
 
 /**
  * Save data to localStorage
@@ -112,6 +114,16 @@ export function addRSVP(rsvp) {
   supabase.from('rsvps').insert(newRsvp).then(({ error }) => {
     if (error) console.warn('Supabase addRSVP failed, using offline cache:', error.message);
   });
+
+  // Notify the host of the new RSVP
+  if (newRsvp.status === 'going') {
+    const ev = getEvent(newRsvp.event_id);
+    notifyHost(newRsvp.event_id, newRsvp.user_id, {
+      type: 'rsvp',
+      title: 'New RSVP 🎉',
+      body: `${newRsvp.guest_name} is coming${ev ? ` to ${ev.name}` : ''}${newRsvp.guest_count > 1 ? ` (+${newRsvp.guest_count - 1})` : ''}`,
+    });
+  }
 }
 
 /**
@@ -219,6 +231,32 @@ export function getPhotos(eventId) {
 }
 
 /**
+ * Upload a photo file to Supabase Storage and return its public URL.
+ * Returns null on failure so callers can fall back to a local base64 copy.
+ * @param {File} file
+ * @param {string} eventId
+ * @returns {Promise<{ url: string, path: string }|null>}
+ */
+export async function uploadPhotoFile(file, eventId) {
+  try {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${eventId}/${generateId()}.${ext}`;
+    const { error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type || undefined });
+    if (error) {
+      console.warn('Storage upload failed, falling back to local copy:', error.message);
+      return null;
+    }
+    const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+    return { url: data.publicUrl, path };
+  } catch (e) {
+    console.warn('uploadPhotoFile error:', e);
+    return null;
+  }
+}
+
+/**
  * Add a photo
  * @param {Object} photo
  */
@@ -231,6 +269,13 @@ export function addPhoto(photo) {
   // Background write to Supabase
   supabase.from('photos').insert(newPhoto).then(({ error }) => {
     if (error) console.warn('Supabase addPhoto failed, using offline cache:', error.message);
+  });
+
+  // Notify the host of the new photo
+  notifyHost(newPhoto.event_id, newPhoto.uploaded_by_id, {
+    type: 'photo',
+    title: 'New photo dropped 📸',
+    body: `${newPhoto.uploaded_by || 'A guest'} added to the camera dump`,
   });
 }
 
@@ -258,113 +303,311 @@ export function addPayment(payment) {
   supabase.from('payments').insert(newPayment).then(({ error }) => {
     if (error) console.warn('Supabase addPayment failed, using offline cache:', error.message);
   });
+
+  // Notify the host of the payment
+  notifyHost(newPayment.event_id, null, {
+    type: 'payment',
+    title: 'Payment received 💸',
+    body: `${newPayment.paid_by || 'A guest'} paid ₹${Number(newPayment.amount || 0).toLocaleString('en-IN')}`,
+  });
 }
 
-/**
- * Get all users from storage
- * @returns {Array}
- */
-export function getUsers() {
-  return load('users', []);
+// ============================================================
+//  Comments / Vibe Wall
+// ============================================================
+
+/** Get comments (vibe wall) for an event, newest first. */
+export function getComments(eventId) {
+  const all = load('comments', []);
+  return all
+    .filter(c => c.event_id === eventId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
-/**
- * Register a new user
- * @param {Object} user
- * @returns {Object} { success: boolean, error?: string, user?: Object }
- */
-export function registerUser(user) {
-  const users = getUsers();
-  const normalizedEmail = user.email.toLowerCase().trim();
-  const normalizedUsername = user.username.toLowerCase().trim();
-  
-  const exists = users.find(u => u.email.toLowerCase().trim() === normalizedEmail || u.username.toLowerCase().trim() === normalizedUsername);
-  if (exists) {
-    return { success: false, error: 'Username or Email already exists' };
-  }
-
-  const newUser = {
-    ...user,
-    id: 'user_' + Math.random().toString(36).substring(2, 11),
-    created_at: new Date().toISOString()
+/** Add a comment to an event's vibe wall. */
+export function addComment(comment) {
+  const all = load('comments', []);
+  const newComment = {
+    id: `cmt_${generateId()}`,
+    ...comment,
+    created_at: new Date().toISOString(),
   };
+  all.push(newComment);
+  save('comments', all);
 
-  users.push(newUser);
-  save('users', users);
-  
-  // Background write to Supabase profiles
-  supabase.from('profiles').insert(newUser).then(({ error }) => {
-    if (error) console.warn('Supabase registerUser failed, using offline cache:', error.message);
+  supabase.from('comments').insert(newComment).then(({ error }) => {
+    if (error) console.warn('Supabase addComment failed, using offline cache:', error.message);
   });
 
-  // Auto login on signup
-  save('session', newUser);
-  return { success: true, user: newUser };
+  // Notify the host of the new vibe-wall post
+  notifyHost(newComment.event_id, newComment.author_id, {
+    type: 'comment',
+    title: 'New vibe wall post 💬',
+    body: `${newComment.author_name || 'Someone'}: ${String(newComment.body || '').slice(0, 60)}`,
+  });
+  return newComment;
+}
+
+// ============================================================
+//  Realtime — live RSVPs, photos, and comments per event
+// ============================================================
+
+/**
+ * Subscribe to live changes for an event. Pass any of onRsvp / onPhoto / onComment.
+ * Each handler receives the Supabase payload ({ eventType, new, old }).
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeToEvent(eventId, handlers = {}) {
+  const channel = supabase.channel(`event:${eventId}`);
+  const tables = { rsvps: handlers.onRsvp, photos: handlers.onPhoto, comments: handlers.onComment };
+
+  Object.entries(tables).forEach(([table, handler]) => {
+    if (!handler) return;
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `event_id=eq.${eventId}` },
+      handler
+    );
+  });
+
+  channel.subscribe();
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+// ============================================================
+//  Notifications
+// ============================================================
+
+/** All notifications for a user, newest first. */
+export function getNotifications(userId) {
+  if (!userId) return [];
+  return load('notifications', [])
+    .filter(n => n.recipient_id === userId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+/** Count of unread notifications for a user. */
+export function unreadNotificationCount(userId) {
+  return getNotifications(userId).filter(n => !n.read).length;
+}
+
+/** Create a notification for a recipient (local cache + Supabase). */
+export function addNotification({ recipient_id, type, title, body, event_id = null, link = null }) {
+  if (!recipient_id) return null;
+  const all = load('notifications', []);
+  const notification = {
+    id: `ntf_${generateId()}`,
+    recipient_id,
+    type,
+    title,
+    body,
+    event_id,
+    link,
+    read: false,
+    created_at: new Date().toISOString(),
+  };
+  all.push(notification);
+  save('notifications', all);
+
+  supabase.from('notifications').insert(notification).then(({ error }) => {
+    if (error) console.warn('addNotification failed:', error.message);
+  });
+  window.dispatchEvent(new CustomEvent('lowkey_notifications'));
+  return notification;
+}
+
+/** Mark all of a user's notifications as read. */
+export function markNotificationsRead(userId) {
+  if (!userId) return;
+  const all = load('notifications', []);
+  let changed = false;
+  const updated = all.map(n => {
+    if (n.recipient_id === userId && !n.read) {
+      changed = true;
+      return { ...n, read: true };
+    }
+    return n;
+  });
+  if (!changed) return;
+  save('notifications', updated);
+  supabase.from('notifications').update({ read: true })
+    .eq('recipient_id', userId).eq('read', false)
+    .then(({ error }) => { if (error) console.warn('markNotificationsRead failed:', error.message); });
+  window.dispatchEvent(new CustomEvent('lowkey_notifications'));
+}
+
+/** Subscribe to realtime notification inserts for a user. */
+export function subscribeToNotifications(userId, handler) {
+  if (!userId) return () => {};
+  const channel = supabase
+    .channel(`notifications:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` },
+      handler
+    )
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+/** Notify a party's host about guest activity (skips notifying the actor). */
+function notifyHost(eventId, actorId, payload) {
+  const ev = getEvent(eventId);
+  if (!ev || !ev.host_id) return;
+  if (actorId && ev.host_id === actorId) return;
+  addNotification({ recipient_id: ev.host_id, event_id: eventId, link: `/party/${eventId}`, ...payload });
+}
+
+// ============================================================
+//  Authentication — Supabase Auth
+//  Passwords are handled entirely by Supabase Auth (hashed in auth.users).
+//  We keep a synchronous local cache of the *profile* (never the password) so
+//  getCurrentUser() can stay synchronous for React state initializers.
+// ============================================================
+
+/** Cache (or clear) the signed-in profile locally. */
+function cacheSession(profile) {
+  if (profile) save('session', profile);
+  else remove('session');
+}
+
+/** Fetch the app profile row for an auth user id. */
+async function fetchProfile(id) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    console.warn('fetchProfile failed:', error.message);
+    return null;
+  }
+  return data;
+}
+
+/** Build a minimal profile from an auth user (fallback before the row syncs). */
+function profileFromAuthUser(user) {
+  const meta = user.user_metadata || {};
+  return {
+    id: user.id,
+    email: user.email,
+    name: meta.name || (user.email ? user.email.split('@')[0] : 'Guest'),
+    username: meta.username || null,
+    birthdate: meta.birthdate || null,
+    phone: meta.phone || null,
+    profile_pic_b64: meta.profile_pic_b64 || null,
+  };
 }
 
 /**
- * Log in a user
- * @param {string} emailOrUsername
- * @param {string} password
- * @returns {Object} { success: boolean, error?: string, user?: Object }
+ * Register a new user via Supabase Auth. A DB trigger creates the matching
+ * public.profiles row from the sign-up metadata (see supabase/migrations).
+ * @returns {Promise<{ success: boolean, error?: string, user?: Object, needsConfirmation?: boolean }>}
  */
-export function loginUser(emailOrUsername, password) {
-  const users = getUsers();
-  const searchKey = emailOrUsername.toLowerCase().trim();
-  
-  const user = users.find(u => 
-    u.email.toLowerCase().trim() === searchKey || 
-    u.username.toLowerCase().trim() === searchKey
-  );
+export async function registerUser(user) {
+  const email = (user.email || '').trim().toLowerCase();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: user.password,
+    options: {
+      data: {
+        name: (user.name || '').trim(),
+        username: (user.username || '').trim().toLowerCase(),
+        birthdate: user.birthdate || null,
+        phone: (user.phone || '').trim() || null,
+      },
+    },
+  });
+  if (error) return { success: false, error: error.message };
 
-  if (!user || user.password !== password) {
-    return { success: false, error: 'Invalid username/email or password' };
+  const profile = profileFromAuthUser(data.user);
+
+  // No session returned => email confirmation is enabled; user must verify first.
+  if (!data.session) {
+    return { success: true, needsConfirmation: true, user: profile };
   }
 
-  save('session', user);
-  return { success: true, user };
+  const full = (await fetchProfile(data.user.id)) || profile;
+  cacheSession(full);
+  return { success: true, user: full };
 }
 
 /**
- * Get current logged in user session
- * @returns {Object|null}
+ * Log in with email + password via Supabase Auth.
+ * (Email-only: username→email resolution was removed to avoid an enumeration
+ * surface. Users sign up with an email and log in with it.)
+ * @returns {Promise<{ success: boolean, error?: string, user?: Object }>}
  */
+export async function loginUser(email, password) {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized.includes('@')) {
+    return { success: false, error: 'Please log in with your email address.' };
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email: normalized, password });
+  if (error) return { success: false, error: error.message };
+
+  const profile = (await fetchProfile(data.user.id)) || profileFromAuthUser(data.user);
+  cacheSession(profile);
+  return { success: true, user: profile };
+}
+
+/** Current signed-in profile (synchronous, from the local cache). */
 export function getCurrentUser() {
   return load('session', null);
 }
 
-/**
- * Log out current user
- */
-export function logoutUser() {
-  remove('session');
+/** Sign out of Supabase Auth and clear the local cache. */
+export async function logoutUser() {
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.warn('signOut failed:', e);
+  }
+  cacheSession(null);
 }
 
 /**
- * Update a user profile
- * @param {string} userId
- * @param {Object} updates
+ * Hydrate the session on app start and subscribe to future auth changes.
+ * @param {(profile: Object|null) => void} onChange
+ * @returns {() => void} unsubscribe
+ */
+export function initAuth(onChange) {
+  const apply = async (session) => {
+    if (session?.user) {
+      const profile = (await fetchProfile(session.user.id)) || profileFromAuthUser(session.user);
+      cacheSession(profile);
+      onChange?.(profile);
+    } else {
+      cacheSession(null);
+      onChange?.(null);
+    }
+  };
+
+  supabase.auth.getSession().then(({ data }) => apply(data?.session));
+  const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => apply(session));
+
+  return () => sub?.subscription?.unsubscribe();
+}
+
+/**
+ * Update the current user's profile (optimistic local cache + background write).
  */
 export function updateUserProfile(userId, updates) {
-  const users = getUsers();
-  const idx = users.findIndex(u => u.id === userId);
-  
-  if (idx >= 0) {
-    const updatedUser = { ...users[idx], ...updates, updated_at: new Date().toISOString() };
-    users[idx] = updatedUser;
-    save('users', users);
-    
-    // Update active session if it's the current user
-    const currentSession = getCurrentUser();
-    if (currentSession && currentSession.id === userId) {
-      save('session', updatedUser);
-    }
+  const updatesForDb = { ...updates };
+  delete updatesForDb.password;
 
-    // Background write to Supabase profiles
-    supabase.from('profiles').update(updates).eq('id', userId).then(({ error }) => {
-      if (error) console.warn('Supabase updateUserProfile failed:', error.message);
-    });
+  const current = getCurrentUser();
+  if (current && current.id === userId) {
+    cacheSession({ ...current, ...updatesForDb });
   }
+
+  supabase.from('profiles').update(updatesForDb).eq('id', userId).then(({ error }) => {
+    if (error) console.warn('updateUserProfile failed:', error.message);
+    else window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  });
 }
 
 /**
@@ -425,6 +668,21 @@ export async function syncWithSupabase() {
     if (!errPayments && payments) {
       const localPayments = load('payments', []);
       save('payments', mergeById(localPayments, payments));
+    }
+
+    // 7. Sync comments -> public.comments
+    const { data: comments, error: errComments } = await supabase.from('comments').select('*');
+    if (!errComments && comments) {
+      const localComments = load('comments', []);
+      save('comments', mergeById(localComments, comments));
+    }
+
+    // 8. Sync notifications (RLS returns only the current user's rows)
+    const { data: notifications, error: errNotifs } = await supabase.from('notifications').select('*');
+    if (!errNotifs && notifications) {
+      const localNotifs = load('notifications', []);
+      save('notifications', mergeById(localNotifs, notifications));
+      window.dispatchEvent(new CustomEvent('lowkey_notifications'));
     }
 
     // Broadcast change to active views

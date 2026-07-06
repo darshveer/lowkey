@@ -1,0 +1,26 @@
+{
+  "name": "LowKey — House Parties, Simplified",
+  "short_name": "LowKey",
+  "description": "Plan epic house parties with your crew. RSVP, split bills, drop photos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B0B14",
+  "theme_color": "#0B0B14",
+  "categories": ["social", "lifestyle", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,7 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { updateUserProfile } from '../utils/storage';
+import {
+  updateUserProfile,
+  getNotifications,
+  markNotificationsRead,
+  subscribeToNotifications,
+} from '../utils/storage';
 import { getInitials, getAvatarGradient } from '../utils/helpers';
+import NotificationsModal from './NotificationsModal';
+import Logo from './Logo';
 import './Navbar.css';
 
 /**
@@ -19,6 +26,8 @@ export default function Navbar({
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   // Close profile menu if clicked outside
   useEffect(() => {
@@ -30,6 +39,43 @@ export default function Navbar({
     document.addEventListener('click', handleDocumentClick);
     return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
+
+  // Load + live-subscribe to notifications for the signed-in user.
+  // State updates are deferred (setTimeout) so none run synchronously in the
+  // effect body — avoids cascading-render warnings.
+  useEffect(() => {
+    if (!currentUser) {
+      const t = setTimeout(() => setNotifications([]), 0);
+      return () => clearTimeout(t);
+    }
+    const refresh = () => setNotifications(getNotifications(currentUser.id));
+    const t = setTimeout(refresh, 0);
+    window.addEventListener('lowkey_notifications', refresh);
+    const unsub = subscribeToNotifications(currentUser.id, refresh);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('lowkey_notifications', refresh);
+      unsub();
+    };
+  }, [currentUser]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const latestNotif = notifications[0];
+
+  const openNotifications = () => {
+    setShowNotifs(true);
+    setShowProfileMenu(false);
+  };
+
+  const handleMarkAllRead = () => {
+    if (currentUser) markNotificationsRead(currentUser.id);
+  };
+
+  const handleNotifOpen = (link) => {
+    setShowNotifs(false);
+    if (currentUser) markNotificationsRead(currentUser.id);
+    navigate(link);
+  };
 
   const handleTabClick = (tab) => {
     if (location.pathname === '/') {
@@ -110,6 +156,7 @@ export default function Navbar({
       <div className="navbar-content">
         {/* Left Logo */}
         <div className="navbar-logo" onClick={handleLogoClick}>
+          <Logo size={28} className="navbar-logo__mark" />
           <span className="brand-cursive text-gradient">lowkey</span>
         </div>
 
@@ -153,10 +200,11 @@ export default function Navbar({
         <div className="navbar-auth">
           {currentUser ? (
             <div className="navbar-profile-wrap">
-              <button 
-                className="navbar-profile-btn" 
+              <button
+                className="navbar-profile-btn"
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 type="button"
+                aria-label="Profile menu"
               >
                 {currentUser.profile_pic_b64 ? (
                   <img src={currentUser.profile_pic_b64} alt={currentUser.name} className="navbar-profile-pic" />
@@ -165,6 +213,7 @@ export default function Navbar({
                     {getInitials(currentUser.name)}
                   </div>
                 )}
+                {unreadCount > 0 && <span className="navbar-notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
 
               {showProfileMenu && (
@@ -173,14 +222,29 @@ export default function Navbar({
                     <p className="dropdown-name">{currentUser.name}</p>
                     <p className="dropdown-username">@{currentUser.username}</p>
                   </div>
+
+                  {/* Notifications preview */}
+                  <button className="dropdown-notif" onClick={openNotifications} type="button">
+                    <div className="dropdown-notif__top">
+                      <span className="dropdown-notif__label">🔔 Notifications</span>
+                      {unreadCount > 0 && <span className="dropdown-notif__count">{unreadCount}</span>}
+                    </div>
+                    <span className="dropdown-notif__preview">
+                      {latestNotif ? `${latestNotif.title} · ${latestNotif.body}` : 'No notifications yet'}
+                    </span>
+                  </button>
+
                   <div className="dropdown-actions">
+                    <button className="dropdown-action-btn" onClick={() => { setShowProfileMenu(false); navigate('/profile'); }}>
+                      View Profile
+                    </button>
                     <button className="dropdown-action-btn" onClick={() => fileInputRef.current?.click()}>
                       Upload Picture
                     </button>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      style={{ display: 'none' }} 
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
                       accept="image/*"
                       onChange={handleProfileUpload}
                     />
@@ -202,6 +266,14 @@ export default function Navbar({
           )}
         </div>
       </div>
+
+      <NotificationsModal
+        isOpen={showNotifs}
+        onClose={() => setShowNotifs(false)}
+        notifications={notifications}
+        onMarkAllRead={handleMarkAllRead}
+        onOpen={handleNotifOpen}
+      />
     </nav>
   );
 }

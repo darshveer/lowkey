@@ -1,3 +1,13 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build output
+dist
+dist-ssr
+build
+
 # Logs
 logs
 *.log
@@ -7,10 +17,24 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Environment variables & secrets — never commit these
+.env
+.env.*
 *.local
+!.env.example
+
+# Vercel / deployment
+.vercel
+.netlify
+
+# Supabase local dev
+.supabase
+supabase/.branches
+supabase/.temp
+
+# Test / coverage
+coverage
+*.lcov
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +46,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code / agent tooling
+.claude/*
+skills-lock.json

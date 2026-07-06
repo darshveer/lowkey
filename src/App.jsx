@@ -3,7 +3,10 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import Navbar from './components/Navbar';
 import SvgDecor from './components/SvgDecor';
-import { getCurrentUser, logoutUser } from './utils/storage';
+import AnimatedBackground from './components/AnimatedBackground';
+import CursorGlow from './components/CursorGlow';
+import Logo from './components/Logo';
+import { getCurrentUser, logoutUser, initAuth } from './utils/storage';
 import './App.css';
 
 // Route-level code splitting keeps the initial bundle lean — the heavier
@@ -11,10 +14,12 @@ import './App.css';
 const CreatorStudio = lazy(() => import('./pages/CreatorStudio'));
 const GuestInvite = lazy(() => import('./pages/GuestInvite'));
 const PartyDashboard = lazy(() => import('./pages/PartyDashboard'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
 function RouteFallback() {
   return (
     <div className="route-fallback" role="status" aria-live="polite">
+      <Logo size={56} className="route-fallback__logo" />
       <div className="route-fallback__spinner" />
     </div>
   );
@@ -26,6 +31,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('discover');
   const [loginRedirect, setLoginRedirect] = useState(false);
 
+  // Hydrate the Supabase Auth session on load and subscribe to auth changes.
+  useEffect(() => {
+    const unsubscribe = initAuth((profile) => setCurrentUser(profile));
+    return unsubscribe;
+  }, []);
+
   // Keep the session in sync when other parts of the app mutate the user
   // (e.g. profile-picture upload dispatches `lowkey_db_sync`).
   useEffect(() => {
@@ -34,14 +45,16 @@ function App() {
     return () => window.removeEventListener('lowkey_db_sync', syncUser);
   }, []);
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    await logoutUser();
     setCurrentUser(null);
     setActiveTab('discover');
   };
 
   return (
     <div className="app">
+      <AnimatedBackground />
+      <CursorGlow />
       <SvgDecor variant="ambient" />
       <Navbar
         currentUser={currentUser}
@@ -66,6 +79,10 @@ function App() {
             }
           />
           <Route path="/create" element={<CreatorStudio />} />
+          <Route
+            path="/profile"
+            element={<ProfilePage currentUser={currentUser} setCurrentUser={setCurrentUser} />}
+          />
           <Route path="/invite/:eventId" element={<GuestInvite key={location.pathname} />} />
           <Route path="/party/:eventId" element={<PartyDashboard key={location.pathname} />} />
         </Routes>

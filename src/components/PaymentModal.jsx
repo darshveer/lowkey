@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { generateUPIQR, initiateUPIPayment } from '../utils/upi.js';
 import { formatINR } from '../utils/helpers.js';
 import GlowButton from './GlowButton.jsx';
@@ -30,6 +30,60 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
   // Razorpay states
   const [razorpayLoading, setRazorpayLoading] = useState(false);
   const [razorpayError, setRazorpayError] = useState('');
+
+  const dialogRef = useRef(null);
+
+  // Accessibility: Esc to close, focus trap, and restore focus on close.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement;
+    const node = dialogRef.current;
+    const focusables = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll(
+              'a[href], button:not([disabled]), input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])'
+            )
+          )
+        : [];
+
+    // Move focus into the dialog
+    const first = focusables()[0];
+    if (first) first.focus();
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const items = focusables();
+        if (items.length === 0) return;
+        const firstEl = items[0];
+        const lastEl = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        } else if (!e.shiftKey && document.activeElement === lastEl) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    // Lock background scroll while the modal is open
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [isOpen, onClose]);
 
   // 1. Generate QR Code
   useEffect(() => {
@@ -91,70 +145,90 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
     });
   };
 
-  // 4. Load Mock Razorpay script (simulated)
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      // Create a mock Razorpay checkout instance
-      window.Razorpay = function(options) {
-        this.open = function() {
-           // Simulate user filling out the modal and paying successfully after 1.5s
-           setTimeout(() => {
-              if (options.handler) {
-                options.handler({ razorpay_payment_id: 'rzp_sim_' + Math.random().toString(36).substring(2, 11) });
-              }
-           }, 1500);
-        };
-      };
-      resolve(true);
+  // 4. Load the real Razorpay Checkout script on demand.
+  const loadCheckoutScript = () =>
+    new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const existing = document.getElementById('razorpay-checkout-js');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(true));
+        existing.addEventListener('error', () => resolve(false));
+        return;
+      }
+      const s = document.createElement('script');
+      s.id = 'razorpay-checkout-js';
+      s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.body.appendChild(s);
     });
-  };
 
-  // 5. Trigger Razorpay test checkout
+  // Fallback used when the serverless backend isn't configured (e.g. local dev).
+  const simulateRazorpay = () =>
+    new Promise((resolve) => {
+      setTimeout(() => {
+        setRazorpayLoading(false);
+        onPaymentSuccess({
+          gateway: 'razorpay-sim',
+          transactionId: 'rzp_sim_' + Date.now().toString(36),
+        });
+        resolve();
+      }, 1500);
+    });
+
+  // 5. Trigger Razorpay checkout — real order via /api, graceful fallback to sim.
   const handleRazorpayPay = async () => {
     setRazorpayLoading(true);
     setRazorpayError('');
 
-    const scriptLoaded = await loadRazorpayScript();
-    if (!scriptLoaded) {
-      setRazorpayError('Failed to load Razorpay payment portal.');
-      setRazorpayLoading(false);
-      return;
-    }
-
-    const options = {
-      key: 'rzp_test_dummykey', // Standard test key
-      amount: Math.round(amount * 100), // in paise
-      currency: 'INR',
-      name: 'LowKey Parties',
-      description: note,
-      image: 'https://cdn.pixabay.com/photo/2016/11/18/17/47/house-1836070_1280.jpg',
-      handler: function (response) {
-        setRazorpayLoading(false);
-        onPaymentSuccess({
-          gateway: 'razorpay',
-          transactionId: response.razorpay_payment_id || 'rzp_sim_' + Math.random().toString(36).substring(2, 11)
-        });
-      },
-      prefill: {
-        name: 'Guest User',
-        email: 'guest@lowkey.com',
-        contact: '9999999999'
-      },
-      notes: {
-        event_note: note
-      },
-      theme: {
-        color: '#8B5CF6' // LowKey primary purple
-      },
-      modal: {
-        ondismiss: function () {
-          setRazorpayLoading(false);
-        }
-      }
-    };
-
     try {
-      const rzp = new window.Razorpay(options);
+      // 1) Ask our serverless function to create an order.
+      const orderRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, receipt: note }),
+      }).catch(() => null);
+
+      // Backend missing/not configured (404/501/offline) → simulate.
+      if (!orderRes || !orderRes.ok) {
+        await simulateRazorpay();
+        return;
+      }
+
+      const order = await orderRes.json();
+      const loaded = await loadCheckoutScript();
+      if (!loaded || !window.Razorpay) {
+        await simulateRazorpay();
+        return;
+      }
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'LowKey Parties',
+        description: note,
+        handler: async (response) => {
+          // 2) Verify the signature server-side before trusting the payment.
+          const verifyRes = await fetch('/api/razorpay/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(response),
+          }).catch(() => null);
+          const verified = verifyRes && verifyRes.ok ? (await verifyRes.json()).valid : false;
+          setRazorpayLoading(false);
+          if (verified) {
+            onPaymentSuccess({ gateway: 'razorpay', transactionId: response.razorpay_payment_id });
+          } else {
+            setRazorpayError('Payment could not be verified. If you were charged, contact the host.');
+          }
+        },
+        prefill: { name: 'Guest User' },
+        notes: { event_note: note },
+        theme: { color: '#8B5CF6' },
+        modal: { ondismiss: () => setRazorpayLoading(false) },
+      });
       rzp.open();
     } catch (err) {
       console.error(err);
@@ -164,14 +238,14 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
   };
 
   return (
-    <div className="payment-modal-overlay" role="dialog" aria-modal="true">
+    <div className="payment-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
       <div className="payment-modal-backdrop" onClick={onClose} />
-      <div className="payment-modal-container animate-fade-in-up">
+      <div className="payment-modal-container animate-fade-in-up" ref={dialogRef}>
         <GlassCard className="payment-modal-card">
           {/* Header */}
           <div className="payment-modal-header">
             <div>
-              <h3 className="payment-modal-title">Secure Checkout</h3>
+              <h3 className="payment-modal-title" id="payment-modal-title">Secure Checkout</h3>
               <p className="payment-modal-desc">{note}</p>
             </div>
             <button className="payment-modal-close" onClick={onClose} aria-label="Close modal">

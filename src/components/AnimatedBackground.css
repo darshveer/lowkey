@@ -1,0 +1,112 @@
+.animated-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg-black);
+}
+
+/* ---- Drifting gradient orbs ---- */
+.animated-bg__orb {
+  position: absolute;
+  border-radius: var(--radius-full);
+  filter: blur(80px);
+  opacity: 0.5;
+  will-change: transform;
+}
+
+.animated-bg__orb {
+  transition: background var(--duration-slow) var(--ease-out);
+}
+
+.animated-bg__orb--purple {
+  width: 44vw;
+  height: 44vw;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx-accent-1) 55%, transparent), transparent 68%);
+  top: -8vw;
+  left: -6vw;
+  animation: bgDrift1 26s ease-in-out infinite;
+}
+
+.animated-bg__orb--blue {
+  width: 38vw;
+  height: 38vw;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx-accent-2) 45%, transparent), transparent 68%);
+  top: 30vh;
+  right: -10vw;
+  animation: bgDrift2 32s ease-in-out infinite;
+}
+
+.animated-bg__orb--pink {
+  width: 34vw;
+  height: 34vw;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx-accent-3) 40%, transparent), transparent 68%);
+  bottom: -8vw;
+  left: 18vw;
+  animation: bgDrift3 30s ease-in-out infinite;
+}
+
+.animated-bg__orb--lime {
+  width: 24vw;
+  height: 24vw;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx-accent-ring) 22%, transparent), transparent 68%);
+  top: 12vh;
+  left: 40vw;
+  animation: bgDrift4 38s ease-in-out infinite;
+}
+
+@keyframes bgDrift1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(12vw, 10vh) scale(1.12); }
+  66% { transform: translate(6vw, 22vh) scale(0.94); }
+}
+
+@keyframes bgDrift2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  40% { transform: translate(-14vw, 12vh) scale(1.1); }
+  70% { transform: translate(-6vw, -8vh) scale(0.9); }
+}
+
+@keyframes bgDrift3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10vw, -14vh) scale(1.15); }
+}
+
+@keyframes bgDrift4 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-16vw, 16vh) scale(1.2); }
+}
+
+/* ---- Panning dotted grid ---- */
+.animated-bg__grid {
+  position: absolute;
+  inset: -50%;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 42px 42px;
+  animation: bgGridPan 40s linear infinite;
+  opacity: 0.6;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}
+
+@keyframes bgGridPan {
+  from { transform: translate(0, 0); }
+  to { transform: translate(42px, 42px); }
+}
+
+/* ---- Vignette to keep edges moody + text legible ---- */
+.animated-bg__vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 0%, transparent 40%, rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.6));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-bg__orb,
+  .animated-bg__grid {
+    animation: none;
+  }
+}

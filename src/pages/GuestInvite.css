@@ -706,3 +706,34 @@
 .invite-rsvp__input:focus {
   border-color: var(--neon-purple);
 }
+
+/* ---- Not found state ---- */
+.invite-notfound {
+  max-width: 460px;
+  margin: 12vh auto;
+  padding: var(--space-2xl) var(--space-xl);
+  text-align: center;
+  border-radius: var(--radius-xl);
+}
+.invite-notfound__emoji {
+  font-size: 56px;
+  margin-bottom: var(--space-md);
+}
+.invite-notfound__title {
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-sm);
+}
+.invite-notfound__text {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-lg);
+  font-size: var(--text-sm);
+}
+.invite-notfound__btn {
+  display: inline-block;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #fff;
+  background: var(--gradient-primary);
+}

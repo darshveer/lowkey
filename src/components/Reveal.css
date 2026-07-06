@@ -1,0 +1,23 @@
+.reveal {
+  opacity: 0;
+  transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+  will-change: opacity, transform;
+}
+
+.reveal--up { transform: translateY(52px); }
+.reveal--left { transform: translateX(-56px); }
+.reveal--right { transform: translateX(56px); }
+.reveal--zoom { transform: scale(0.9); }
+
+.reveal--visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none;
+  }
+}

@@ -7,10 +7,21 @@
 /* ---- Lazy route loading fallback ---- */
 .route-fallback {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
   align-items: center;
   justify-content: center;
   min-height: 60dvh;
   width: 100%;
+}
+
+.route-fallback__logo {
+  animation: float 3s ease-in-out infinite;
+  filter: drop-shadow(0 8px 24px rgba(139, 92, 246, 0.4));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-fallback__logo { animation: none; }
 }
 
 .route-fallback__spinner {

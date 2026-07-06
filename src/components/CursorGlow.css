@@ -1,0 +1,61 @@
+.cursor-glow,
+.cursor-glow__ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: var(--z-toast);
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-out);
+  will-change: transform, opacity;
+}
+
+/* Big soft aurora blob that eases behind the pointer */
+.cursor-glow {
+  width: 460px;
+  height: 460px;
+  margin: -230px 0 0 -230px;
+  border-radius: var(--radius-full);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--fx-accent-1) 20%, transparent) 0%,
+    color-mix(in srgb, var(--fx-accent-2) 12%, transparent) 35%,
+    color-mix(in srgb, var(--fx-accent-3) 6%, transparent) 60%,
+    transparent 72%
+  );
+  filter: blur(24px);
+  mix-blend-mode: screen;
+  transition: background var(--duration-slow) var(--ease-out);
+}
+
+/* Crisp small ring that tracks the cursor exactly */
+.cursor-glow__ring {
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1.5px solid color-mix(in srgb, var(--fx-accent-ring) 70%, transparent);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--fx-accent-ring) 35%, transparent);
+  transition: opacity var(--duration-normal) var(--ease-out),
+              width var(--duration-normal) var(--ease-bounce),
+              height var(--duration-normal) var(--ease-bounce),
+              margin var(--duration-normal) var(--ease-bounce),
+              border-color var(--duration-normal) var(--ease-out),
+              background var(--duration-normal) var(--ease-out);
+}
+
+.cursor-glow__ring--active {
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-color: rgba(139, 92, 246, 0.9);
+  background: rgba(139, 92, 246, 0.12);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-glow,
+  .cursor-glow__ring {
+    display: none;
+  }
+}
