@@ -92,6 +92,11 @@
   animation: gradientShift 3s ease infinite;
 }
 
+/* Over state: settled, not urgent — drop the pulsing glow. */
+.countdown-timer__done--over {
+  animation: none;
+}
+
 @keyframes countdownDonePulse {
   0%, 100% {
     box-shadow: 0 0 20px rgba(255, 0, 127, 0.2),

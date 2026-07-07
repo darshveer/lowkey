@@ -28,17 +28,6 @@
   filter: saturate(1.05) contrast(1.02);
 }
 
-.map-preview__pin {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -100%);
-  font-size: 26px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
-  pointer-events: none;
-  animation: float 3s ease-in-out infinite;
-}
-
 .map-preview__placeholder {
   display: flex;
   flex-direction: column;

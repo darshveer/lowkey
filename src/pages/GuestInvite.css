@@ -235,6 +235,31 @@
   font-weight: 600;
 }
 
+/* Host avatar renders as a button (opens the profile peek) */
+button.invite-host__avatar {
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.invite-host__name--link {
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.invite-host__name--link:hover {
+  color: var(--neon-purple);
+  text-decoration: underline;
+}
+
+.invite-host__cohosts {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+}
+
 /* ---- Personal DJ ---- */
 .invite-dj {
   display: flex;
@@ -736,4 +761,63 @@
   font-weight: 700;
   color: #fff;
   background: var(--gradient-primary);
+}
+
+/* ---- Waitlist + ticket ---- */
+.invite-waitlist-note {
+  font-size: var(--text-xs);
+  color: var(--neon-lime);
+  margin-bottom: var(--space-sm);
+  text-align: center;
+}
+.invite-waitlist-badge {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(204, 255, 0, 0.1);
+  border: 1px solid rgba(204, 255, 0, 0.28);
+  color: var(--neon-lime);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.invite-ticket-wrap {
+  margin-top: var(--space-lg);
+}
+
+.invite-payment-nudge-btn {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: #fff;
+  background: var(--gradient-primary);
+  border: none;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.invite-payment-nudge-btn:hover { transform: translateY(-1px); }
+
+/* ---- Follow host button ---- */
+.invite-follow-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-xs);
+  color: #fff;
+  background: var(--gradient-primary);
+  border: none;
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+.invite-follow-btn:hover { transform: translateY(-1px); }
+.invite-follow-btn.is-following {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border-strong);
 }

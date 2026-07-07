@@ -6,7 +6,7 @@ import {
   markNotificationsRead,
   subscribeToNotifications,
 } from '../utils/storage';
-import { getInitials, getAvatarGradient } from '../utils/helpers';
+import { getInitials, getAvatarGradient, safeImageSrc } from '../utils/helpers';
 import NotificationsModal from './NotificationsModal';
 import Logo from './Logo';
 import './Navbar.css';
@@ -206,15 +206,19 @@ export default function Navbar({
                 type="button"
                 aria-label="Profile menu"
               >
-                {currentUser.profile_pic_b64 ? (
-                  <img src={currentUser.profile_pic_b64} alt={currentUser.name} className="navbar-profile-pic" />
+                {safeImageSrc(currentUser.profile_pic_b64, { allowRemote: false }) ? (
+                  <img src={safeImageSrc(currentUser.profile_pic_b64, { allowRemote: false })} alt={currentUser.name} className="navbar-profile-pic" />
                 ) : (
                   <div className="navbar-profile-avatar" style={{ background: getAvatarGradient(currentUser.name) }}>
                     {getInitials(currentUser.name)}
                   </div>
                 )}
-                {unreadCount > 0 && <span className="navbar-notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
+              {/* Badge is a sibling of the button so the button's overflow:hidden
+                  (which crops the avatar to a circle) doesn't clip it. */}
+              {unreadCount > 0 && (
+                <span className="navbar-notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
 
               {showProfileMenu && (
                 <div className="navbar-profile-dropdown">

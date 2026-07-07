@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, uploadPhotoFile, addPayment, getCurrentUser, subscribeToEvent } from '../utils/storage';
-import { generateId, formatDate, formatTime, formatINR, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining, safeUrl } from '../utils/helpers';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { getEvent, saveEvent, getRSVPs, updateRSVP, deleteRSVP, getExpenses, addExpense, getPhotos, addPhoto, uploadPhotoFile, getPayments, addPayment, updatePayment, getCurrentUser, subscribeToEvent, promoteWaitlist, checkPaymentDeadlines, startEvent, archiveEvent, deleteEvent, getProfile, findProfileByEmail } from '../utils/storage';
+import { generateId, formatDate, formatTime, formatINR, getInitials, getAvatarGradient, getPhotoDumpTimeRemaining, safeUrl, safeImageSrc, isEventOver, isPartyManager } from '../utils/helpers';
 import { calculateSplit } from '../utils/upi';
+import { parseCheckInToken } from '../utils/qr';
 import GlassCard from '../components/GlassCard';
 import GlowButton from '../components/GlowButton';
 import CountdownTimer from '../components/CountdownTimer';
@@ -10,8 +11,12 @@ import UPIQRCode from '../components/UPIQRCode';
 import PhotoGrid from '../components/PhotoGrid';
 import PlusOneSwiper from '../components/PlusOneSwiper';
 import PaymentModal from '../components/PaymentModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import ProfilePeek from '../components/ProfilePeek';
+import QRScanner from '../components/QRScanner';
 import MapPreview from '../components/MapPreview';
 import VibeWall from '../components/VibeWall';
+import AnnouncementsPanel from '../components/AnnouncementsPanel';
 import SvgDecor from '../components/SvgDecor';
 import './PartyDashboard.css';
 
@@ -64,8 +69,8 @@ const STAY_EMOJI = { staying: '🛏️', cab: '🚕' };
 /* ---- Tabs config ---- */
 const TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'kitty', label: 'Kitty 💰' },
-  { key: 'camera', label: 'Camera 📸' },
+  { key: 'kitty', label: 'Kitty' },
+  { key: 'camera', label: 'Camera' },
   { key: 'plusone', label: '+1' },
 ];
 
@@ -76,6 +81,7 @@ const TABS = [
  */
 export default function PartyDashboard() {
   const { eventId } = useParams();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [event, setEvent] = useState(() => getEvent(eventId));
 
@@ -88,12 +94,22 @@ export default function PartyDashboard() {
 
   const [rsvps, setRsvps] = useState(() => getRSVPs(eventId));
   const [expenses, setExpenses] = useState(() => getExpenses(eventId));
+  const [payments, setPayments] = useState(() => getPayments(eventId));
   const [photos, setPhotos] = useState(() => {
     const storedPhotos = getPhotos(eventId);
     return storedPhotos.length ? storedPhotos : [];
   });
 
-  // ---- Realtime: live RSVPs & photo feed for this party ----
+  // Lazy sweep: expire unpaid RSVPs past their deadline + promote the
+  // waitlist, and remind guests whose deadline is approaching. There's no
+  // background job in this app, so this runs whenever the dashboard mounts.
+  useEffect(() => {
+    const evId = event?.id || eventId;
+    if (!evId) return;
+    checkPaymentDeadlines(evId);
+  }, [event?.id, eventId]);
+
+  // ---- Realtime: live RSVPs, photos & payments for this party ----
   useEffect(() => {
     const evId = event?.id || eventId;
     if (!evId) return;
@@ -120,6 +136,23 @@ export default function PartyDashboard() {
         if (!row || payload.eventType === 'DELETE') return;
         setPhotos(prev => (prev.some(p => p.id === row.id) ? prev : [...prev, row]));
       },
+      onPayment: (payload) => {
+        if (payload.eventType === 'DELETE') {
+          setPayments(prev => prev.filter(p => p.id !== payload.old?.id));
+          return;
+        }
+        const row = payload.new;
+        if (!row) return;
+        setPayments(prev => {
+          const idx = prev.findIndex(p => p.id === row.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], ...row };
+            return copy;
+          }
+          return [...prev, row];
+        });
+      },
     });
   }, [event?.id, eventId]);
 
@@ -130,6 +163,11 @@ export default function PartyDashboard() {
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [editExpenseDesc, setEditExpenseDesc] = useState('');
   const [editExpenseAmount, setEditExpenseAmount] = useState('');
+  const [expenseSplitType, setExpenseSplitType] = useState('equal'); // 'equal' | 'custom'
+  const [expenseShares, setExpenseShares] = useState({}); // rsvpId -> amount
+  const [expenseReceipt, setExpenseReceipt] = useState(null); // { url } | null
+  const receiptInputRef = useRef(null);
+  const [coHostInput, setCoHostInput] = useState('');
 
   /* Toast */
   const [toast, setToast] = useState(null);
@@ -156,11 +194,32 @@ export default function PartyDashboard() {
     cover_charge: '',
     capacity: '',
     upi_id: '',
+    payment_deadline_hours: '',
   }));
 
   // Payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentUser] = useState(() => getCurrentUser());
+
+  // Payment approvals — sub-tabs are independent and interchangeable, plus a
+  // search that filters the current one (phone number, name, or UTR).
+  const [approvalSubTab, setApprovalSubTab] = useState('pending');
+  const [approvalSearch, setApprovalSearch] = useState('');
+
+  // Door scanner — decodes a guest's entry QR to check them in.
+  const [showScanner, setShowScanner] = useState(false);
+  const lastScanRef = useRef({ token: null, atMs: 0 });
+
+  // In-app confirmation dialog — { title, message, confirmLabel, danger, onConfirm } | null
+  const [confirmState, setConfirmState] = useState(null);
+
+  // Profile peek modal — a person object (see ProfilePeek) or null
+  const [peek, setPeek] = useState(null);
+  function openPeek(userId, fallbackName) {
+    if (!userId) return;
+    const p = getProfile(userId);
+    setPeek({ id: userId, ...(p || {}), name: p?.name || fallbackName });
+  }
 
   // Party doesn't exist — all hooks are declared above this guard.
   if (!event) {
@@ -178,21 +237,22 @@ export default function PartyDashboard() {
     );
   }
 
-  const handlePaymentSuccess = ({ gateway, transactionId }) => {
+  const handlePaymentSubmitted = ({ transactionId, phone }) => {
     const paymentData = {
       id: 'pay_' + generateId(),
       rsvp_id: null,
       event_id: event.id,
       amount: splitAmount,
       paid_by: currentUser ? currentUser.name : 'Guest User',
+      phone: phone || null,
       transaction_id: transactionId,
-      gateway: gateway,
-      status: 'success'
+      gateway: 'upi',
     };
 
     addPayment(paymentData);
+    setPayments(prev => [...prev, paymentData]);
     setShowPaymentModal(false);
-    showToast(`Payment of ${formatINR(splitAmount)} confirmed! Ref: ${transactionId}`);
+    showToast(`Submitted ${formatINR(splitAmount)} for approval. Ref: ${transactionId}`);
   };
 
   // ---- Toast helper ----
@@ -205,6 +265,7 @@ export default function PartyDashboard() {
   // ---- Poll tallies ----
   const goingRsvps = rsvps.filter(r => r.status === 'going');
   const maybeRsvps = rsvps.filter(r => r.status === 'maybe');
+  const customSplitSum = goingRsvps.reduce((s, r) => s + (Number(expenseShares[r.id]) || 0), 0);
 
   const tallies = {
     going: goingRsvps.length,
@@ -220,17 +281,42 @@ export default function PartyDashboard() {
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   const splitAmount = calculateSplit(totalExpenses, tallies.going || 1);
 
+  async function handleReceiptUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    showToast('Uploading receipt…');
+    const uploaded = await uploadPhotoFile(file, `${event?.id || eventId}-receipts`);
+    const url = uploaded?.url || (await new Promise((res) => {
+      const r = new FileReader();
+      r.onloadend = () => res(r.result);
+      r.readAsDataURL(file);
+    }));
+    setExpenseReceipt({ url });
+    showToast('Receipt attached.');
+    if (receiptInputRef.current) receiptInputRef.current.value = '';
+  }
+
   function handleAddExpense(e) {
     e.preventDefault();
     if (!expenseDesc.trim() || !expenseAmount) return;
+
+    const amount = Number(expenseAmount);
+    const shares =
+      expenseSplitType === 'custom'
+        ? Object.fromEntries(
+            goingRsvps.map(r => [r.guest_name, Math.round(Number(expenseShares[r.id] ?? 0))])
+          )
+        : null;
 
     const newExpense = {
       id: `exp_${generateId()}`,
       event_id: event?.id || eventId,
       description: expenseDesc.trim(),
-      amount: Number(expenseAmount),
+      amount,
       paid_by: event?.host_name || 'You',
-      split_type: 'equal',
+      split_type: expenseSplitType,
+      split_shares: shares,
+      receipt_url: expenseReceipt?.url || null,
       upi_id: event?.upi_id || '',
     };
 
@@ -238,6 +324,9 @@ export default function PartyDashboard() {
     setExpenses(prev => [...prev, newExpense]);
     setExpenseDesc('');
     setExpenseAmount('');
+    setExpenseSplitType('equal');
+    setExpenseShares({});
+    setExpenseReceipt(null);
     setShowAddExpense(false);
     showToast('Expense added!');
   }
@@ -285,7 +374,7 @@ export default function PartyDashboard() {
     const settled = !rsvp.settled;
     setRsvps(prev => prev.map(r => (r.id === rsvp.id ? { ...r, settled } : r)));
     updateRSVP(rsvp.id, { settled });
-    showToast(settled ? `${rsvp.guest_name} marked paid ✓` : `${rsvp.guest_name} marked unpaid`);
+    showToast(settled ? `${rsvp.guest_name} marked paid` : `${rsvp.guest_name} marked unpaid`);
   }
 
   // ---- Guest List Handlers ----
@@ -305,11 +394,21 @@ export default function PartyDashboard() {
   }
 
   function handleDeleteGuest(rsvpId) {
-    if (window.confirm('Are you sure you want to remove this guest?')) {
-      setRsvps(prev => prev.filter(r => r.id !== rsvpId));
-      deleteRSVP(rsvpId);
-      showToast('Guest removed.');
-    }
+    setConfirmState({
+      title: 'Remove this guest?',
+      message: 'Their RSVP is deleted. If there is a waitlist, the next guest is promoted automatically.',
+      confirmLabel: 'Remove',
+      danger: true,
+      onConfirm: () => {
+        setConfirmState(null);
+        setRsvps(prev => prev.filter(r => r.id !== rsvpId));
+        deleteRSVP(rsvpId);
+        // A spot may have freed up — auto-promote the next waitlisted guest.
+        promoteWaitlist(event?.id || eventId);
+        setRsvps(getRSVPs(event?.id || eventId));
+        showToast('Guest removed.');
+      },
+    });
   }
 
   function openEditGuest(rsvp) {
@@ -330,6 +429,7 @@ export default function PartyDashboard() {
       cover_charge: event.cover_charge != null ? String(event.cover_charge) : '',
       capacity: event.capacity != null ? String(event.capacity) : '',
       upi_id: event.upi_id || '',
+      payment_deadline_hours: event.payment_deadline_hours != null ? String(event.payment_deadline_hours) : '12',
     });
     setShowEditParty(true);
   }
@@ -340,7 +440,7 @@ export default function PartyDashboard() {
     if (!files?.length) return;
 
     const evId = event?.id || eventId;
-    showToast('📸 Uploading…');
+    showToast('Uploading…');
 
     for (const file of Array.from(files)) {
       // Prefer Supabase Storage (real hosting); fall back to an inline base64 copy.
@@ -368,7 +468,7 @@ export default function PartyDashboard() {
       setPhotos(prev => [...prev, newPhoto]);
     }
 
-    showToast('📸 Photo uploaded!');
+    showToast('Photo uploaded!');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -383,7 +483,167 @@ export default function PartyDashboard() {
         r.id === rsvpId ? { ...r, plus_one_approved: approved } : r
       )
     );
-    showToast(approved ? '✅ +1 approved!' : '❌ +1 denied');
+    updateRSVP(rsvpId, { plus_one_approved: approved });
+    showToast(approved ? '+1 approved!' : '+1 denied');
+  }
+
+  // ---- Door check-in ----
+  const checkedInCount = goingRsvps.filter(r => r.checked_in).length;
+  function handleToggleCheckIn(rsvp) {
+    const checked_in = !rsvp.checked_in;
+    setRsvps(prev => prev.map(r => (r.id === rsvp.id ? { ...r, checked_in } : r)));
+    updateRSVP(rsvp.id, { checked_in });
+    showToast(checked_in ? `${rsvp.guest_name} checked in` : `${rsvp.guest_name} check-in undone`);
+  }
+
+  // ---- Host / co-host gate — the scanner and payment approvals are their business ----
+  const isManager = isPartyManager(event, currentUser?.id);
+
+  // ---- Door scanner: decode a guest's entry QR and check them in ----
+  function handleScanDecode(text) {
+    const parsed = parseCheckInToken(text);
+    if (!parsed || parsed.eventId !== (event?.id || eventId)) {
+      showToast('That QR is not a valid ticket for this party.');
+      return;
+    }
+    // Ignore rapid repeat scans of the same code (the camera reads every frame).
+    const now = new Date().getTime();
+    if (lastScanRef.current.token === parsed.rsvpId && now - lastScanRef.current.atMs < 4000) return;
+    lastScanRef.current = { token: parsed.rsvpId, atMs: now };
+
+    const rsvp = rsvps.find(r => r.id === parsed.rsvpId);
+    if (!rsvp) {
+      showToast('Ticket not found for this party.');
+      return;
+    }
+    if (rsvp.checked_in) {
+      showToast(`${rsvp.guest_name} is already checked in.`);
+      return;
+    }
+    if (event.cover_charge > 0 && !rsvp.cover_paid) {
+      showToast(`${rsvp.guest_name}'s payment hasn't been approved yet.`);
+      return;
+    }
+    handleToggleCheckIn(rsvp);
+  }
+
+  // ---- Waitlist ----
+  const waitlistRsvps = rsvps.filter(r => r.status === 'waitlist');
+
+  // ---- Payment approvals ----
+  const approvalRows = payments
+    .filter(p => (p.status || 'pending') === approvalSubTab)
+    .filter(p => {
+      const q = approvalSearch.trim().toLowerCase();
+      if (!q) return true;
+      return [p.paid_by, p.phone, p.transaction_id].filter(Boolean).some(v => String(v).toLowerCase().includes(q));
+    })
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const approvalCounts = {
+    pending: payments.filter(p => (p.status || 'pending') === 'pending').length,
+    approved: payments.filter(p => p.status === 'approved').length,
+    declined: payments.filter(p => p.status === 'declined').length,
+  };
+
+  function decidePayment(paymentId, status) {
+    const updated = updatePayment(paymentId, status);
+    if (!updated) return;
+    setPayments(prev => prev.map(p => (p.id === paymentId ? { ...p, status } : p)));
+    if (updated.rsvp_id) {
+      setRsvps(prev => prev.map(r => (r.id === updated.rsvp_id ? { ...r, cover_paid: status === 'approved' } : r)));
+    }
+    showToast(status === 'approved' ? 'Payment approved.' : 'Payment declined.');
+  }
+
+  // ---- Co-hosts (added by email; linked to a profile when one exists) ----
+  // Entries are { email, id, username, name }. Legacy parties may still hold
+  // plain name strings — normalize so both shapes render.
+  const normalizeCoHost = (c) =>
+    typeof c === 'string' ? { name: c, email: null, id: null, username: null } : c;
+  const coHostKey = (c) => c.email || c.name;
+  const coHostLabel = (c) => (c.username ? `@${c.username}` : c.name || c.email);
+  const coHosts = (event?.co_hosts || []).map(normalizeCoHost);
+
+  function addCoHost() {
+    const email = coHostInput.trim().toLowerCase();
+    if (!email) return;
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      showToast('Enter a valid email address.');
+      return;
+    }
+    if (currentUser?.email && email === currentUser.email.toLowerCase()) {
+      showToast("That's you — you're already the host.");
+      return;
+    }
+    if (coHosts.some(c => (c.email || '').toLowerCase() === email)) {
+      showToast('Already a co-host.');
+      return;
+    }
+    const profile = findProfileByEmail(email);
+    const entry = {
+      email,
+      id: profile?.id || null,
+      username: profile?.username || null,
+      name: profile?.name || null,
+    };
+    const updated = { ...event, co_hosts: [...(event.co_hosts || []), entry] };
+    setEvent(updated);
+    saveEvent(updated);
+    setCoHostInput('');
+    showToast(profile
+      ? `${coHostLabel(entry)} added as co-host`
+      : `${email} added — no LowKey account yet`);
+  }
+  function removeCoHost(key) {
+    const updated = {
+      ...event,
+      co_hosts: (event.co_hosts || []).filter(c => coHostKey(normalizeCoHost(c)) !== key),
+    };
+    setEvent(updated);
+    saveEvent(updated);
+  }
+
+  // ---- Post-party recap (event date is in the past) ----
+  const isPast = !!(event?.date && event.date < new Date().toISOString().split('T')[0]);
+
+  // ---- Lifecycle: over? started? ----
+  const over = isEventOver(event);
+  const started = !!event?.started;
+
+  function handleStartParty() {
+    const updated = startEvent(event.id);
+    if (updated) {
+      setEvent(updated);
+      showToast('Party started — guest QRs are now active!');
+    }
+  }
+  function handleDeleteParty() {
+    if (over && !event.archived) return; // a finished party must be archived first
+    setConfirmState({
+      title: 'Delete this party permanently?',
+      message: 'This removes all RSVPs, expenses and photos. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => {
+        setConfirmState(null);
+        deleteEvent(event.id);
+        navigate('/');
+      },
+    });
+  }
+  function handleArchiveParty() {
+    if (!over) return; // archive only after it's done
+    setConfirmState({
+      title: 'Archive this party?',
+      message: 'It stays in your records but is hidden from discovery.',
+      confirmLabel: 'Archive',
+      onConfirm: () => {
+        setConfirmState(null);
+        archiveEvent(event.id);
+        showToast('Party archived.');
+        navigate('/');
+      },
+    });
   }
 
   // ---- Photo lock logic (locked before 2 AM next day) ----
@@ -504,6 +764,13 @@ export default function PartyDashboard() {
                 <label className="dashboard-edit-label">UPI ID</label>
                 <input className="dashboard-add-expense__input" type="text" value={editEvent.upi_id} onChange={e => setEditEvent(p => ({...p, upi_id: e.target.value}))} placeholder="yourname@upi" />
               </div>
+              {Number(editEvent.cover_charge) > 0 && (
+                <div className="dashboard-edit-field">
+                  <label className="dashboard-edit-label">Payment window (hours)</label>
+                  <input className="dashboard-add-expense__input" type="number" min="1" value={editEvent.payment_deadline_hours} onChange={e => setEditEvent(p => ({...p, payment_deadline_hours: e.target.value}))} placeholder="12" />
+                  <small className="dashboard-cohosts__hint">Unpaid RSVPs auto-expire after this — the freed spot goes to the next waitlisted guest, who then gets 1 hour to pay.</small>
+                </div>
+              )}
             </div>
             <div className="dashboard-edit-modal__footer">
               <button
@@ -515,6 +782,7 @@ export default function PartyDashboard() {
                     ...editEvent,
                     cover_charge: Number(editEvent.cover_charge) || 0,
                     capacity: Number(editEvent.capacity) || null,
+                    payment_deadline_hours: Number(editEvent.payment_deadline_hours) || 12,
                     tagline: (editEvent.vibe_tags || []).map(t => '#' + t).join(' ')
                   };
                   saveEvent(updatedEvent);
@@ -534,28 +802,38 @@ export default function PartyDashboard() {
       <header className="dashboard-header">
         <div className="dashboard-header__top">
           <h2 className="dashboard-header__title">{event.name}</h2>
-          <button
-            className="dashboard-header__edit-btn"
-            type="button"
-            onClick={openEditParty}
-            title="Edit party details"
-          >
-            Edit Party
-          </button>
+          {!over && (
+            <button
+              className="dashboard-header__edit-btn"
+              type="button"
+              onClick={openEditParty}
+              title="Edit party details"
+            >
+              Edit Party
+            </button>
+          )}
         </div>
-        <span className="dashboard-header__badge">
+        <span className={`dashboard-header__badge dashboard-header__badge--${over ? 'over' : started ? 'live' : 'soon'}`}>
           <span className="dashboard-header__badge-dot" />
-          LIVE
+          {over ? 'WRAPPED' : started ? 'LIVE' : 'NOT STARTED'}
         </span>
         <p className="dashboard-header__subtitle">
           {formatDate(event.date)} · {formatTime(event.time_start)} – {formatTime(event.time_end)}
         </p>
+
+        {/* Start party — activates guest entry QRs */}
+        {!started && !over && (
+          <div className="dashboard-start-row">
+            <Btn variant="lime" onClick={handleStartParty}>▶ Start Party</Btn>
+            <span className="dashboard-start-hint">Guest entry QRs stay locked until you start.</span>
+          </div>
+        )}
       </header>
 
       {/* ========== TAB BAR ========== */}
       <nav className="dashboard-tabs">
         <div className="tab-bar">
-          {TABS.map(tab => (
+          {(isManager ? [...TABS, { key: 'approvals', label: 'Approvals' }] : TABS).map(tab => (
             <button
               key={tab.key}
               className={`tab-item${activeTab === tab.key ? ' active' : ''}`}
@@ -576,7 +854,7 @@ export default function PartyDashboard() {
               {/* Countdown */}
               <div className="dashboard-countdown-wrap">
                 {CountdownTimer ? (
-                  <CountdownTimer targetDate={event.date} targetTime={event.time_start} />
+                  <CountdownTimer targetDate={event.date} targetTime={event.time_start} isOver={over} />
                 ) : (
                   <Card className="dashboard-guest-list__card" style={{ textAlign: 'center', padding: '24px' }}>
                     <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, fontFamily: 'var(--font-display)', fontWeight: 600 }}>
@@ -637,17 +915,21 @@ export default function PartyDashboard() {
                 </div>
               )}
 
-              {/* Live vibe wall */}
-              <div style={{ marginTop: 'var(--space-lg)' }}>
-                <h3 className="dashboard-section-subtitle" style={{ marginBottom: 'var(--space-sm)' }}>Vibe Wall</h3>
-                <Card>
-                  <VibeWall
-                    eventId={event.id}
-                    authorName={currentUser ? currentUser.name : event.host_name}
-                    authorId={currentUser ? currentUser.id : null}
-                  />
-                </Card>
-              </div>
+              {/* Live vibe wall (optional) */}
+              {event.vibe_wall_enabled !== false && (
+                <div style={{ marginTop: 'var(--space-lg)' }}>
+                  <h3 className="dashboard-section-subtitle" style={{ marginBottom: 'var(--space-sm)' }}>Vibe Wall</h3>
+                  <Card>
+                    <VibeWall
+                      eventId={event.id}
+                      authorName={currentUser ? currentUser.name : event.host_name}
+                      authorId={currentUser ? currentUser.id : null}
+                      hostId={event.host_id}
+                      closesAt={event.vibe_wall_closes_at}
+                    />
+                  </Card>
+                </div>
+              )}
             </div>
 
             <div className="dashboard-panel-col">
@@ -673,20 +955,111 @@ export default function PartyDashboard() {
                 </div>
               </div>
 
+              {/* Post-party recap */}
+              {isPast && (
+                <>
+                  <p className="dashboard-section-title">Party Recap</p>
+                  <Card className="dashboard-guest-list__card" style={{ marginBottom: 'var(--space-lg)' }}>
+                    <div className="dashboard-recap">
+                      <div className="dashboard-recap__stat"><b>{goingRsvps.length}</b><span>showed up</span></div>
+                      <div className="dashboard-recap__stat"><b>{photos.length}</b><span>photos</span></div>
+                      <div className="dashboard-recap__stat"><b>{checkedInCount}</b><span>checked in</span></div>
+                      <div className="dashboard-recap__stat"><b>{formatINR(totalExpenses)}</b><span>spent</span></div>
+                    </div>
+                    {photos.length > 0 && (
+                      <div className="dashboard-recap__strip">
+                        {photos.slice(0, 6).map(p => (
+                          <img key={p.id} src={safeImageSrc(p.photo_url)} alt={p.caption || 'party'} />
+                        ))}
+                      </div>
+                    )}
+                    <p className="dashboard-recap__caption">That's a wrap — relive the night</p>
+                  </Card>
+                </>
+              )}
+
+              {/* Co-hosts */}
+              <p className="dashboard-section-title">Co-hosts</p>
+              <Card className="dashboard-guest-list__card" style={{ marginBottom: 'var(--space-lg)' }}>
+                <div className="dashboard-cohosts">
+                  {coHosts.length > 0 && (
+                    <div className="dashboard-cohosts__list">
+                      {coHosts.map(c => {
+                        const key = coHostKey(c);
+                        const label = coHostLabel(c);
+                        return (
+                          <span key={key} className="dashboard-cohost-chip">
+                            {c.id ? (
+                              <button
+                                type="button"
+                                className="dashboard-cohost-chip__name"
+                                title={`View ${label}'s profile`}
+                                onClick={() => openPeek(c.id, c.name || label)}
+                              >
+                                {label}
+                              </button>
+                            ) : (
+                              label
+                            )}
+                            <button type="button" onClick={() => removeCoHost(key)} aria-label={`Remove ${label}`}>×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="dashboard-cohosts__add">
+                    <input
+                      className="dashboard-add-expense__input"
+                      type="email"
+                      placeholder="Add a co-host by email…"
+                      value={coHostInput}
+                      onChange={e => setCoHostInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCoHost(); } }}
+                    />
+                    <Btn variant="purple" onClick={addCoHost}>Add</Btn>
+                  </div>
+                  <small className="dashboard-cohosts__hint">Added by email — with a LowKey account their username shows, and everyone at the party can view their profile.</small>
+                </div>
+              </Card>
+
+              {/* Broadcast announcements */}
+              <p className="dashboard-section-title">Announcements</p>
+              <Card className="dashboard-guest-list__card" style={{ marginBottom: 'var(--space-lg)' }}>
+                <AnnouncementsPanel eventId={event.id} canPost authorName={event.host_name} />
+              </Card>
+
               {/* Guest List */}
-              <p className="dashboard-section-title">Guest List</p>
+              <div className="dashboard-guestlist-head">
+                <p className="dashboard-section-title" style={{ margin: 0 }}>Guest List</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                  {isManager && (
+                    <button type="button" className="dashboard-scan-btn" onClick={() => setShowScanner(true)}>
+                      Scan Entry QR
+                    </button>
+                  )}
+                  <span className="dashboard-checkin-count">{checkedInCount}/{goingRsvps.length} arrived</span>
+                </div>
+              </div>
+              {waitlistRsvps.length > 0 && (
+                <p className="dashboard-waitlist-note">{waitlistRsvps.length} on the waitlist — removing a guest auto-promotes the next.</p>
+              )}
               <Card className="dashboard-guest-list__card">
                 <div className="dashboard-guest-list">
                   {rsvps.map(rsvp => {
                     const isEditing = rsvp.id === editingGuestId;
                     return (
                       <div className={`dashboard-guest-row ${isEditing ? 'editing' : ''}`} key={rsvp.id}>
-                        <div
+                        <button
+                          type="button"
                           className="dashboard-guest-row__avatar"
                           style={{ background: getAvatarGradient(rsvp.guest_name) }}
+                          onClick={() => openPeek(rsvp.user_id, rsvp.guest_name)}
+                          disabled={!rsvp.user_id}
+                          title={rsvp.user_id ? `View ${rsvp.guest_name}'s profile` : undefined}
+                          aria-label={rsvp.user_id ? `View ${rsvp.guest_name}'s profile` : rsvp.guest_name}
                         >
                           {getInitials(rsvp.guest_name)}
-                        </div>
+                        </button>
                         
                         {isEditing ? (
                           <div className="dashboard-guest-inline-edit">
@@ -747,9 +1120,34 @@ export default function PartyDashboard() {
                                     {STAY_EMOJI[rsvp.poll_staying]}
                                   </span>
                                 )}
+                                {rsvp.plus_one_requested && (
+                                  <span
+                                    className="dashboard-poll-badge"
+                                    title={`+1: ${rsvp.plus_one_name || 'guest'}`}
+                                  >
+                                    +1 {rsvp.plus_one_approved === true ? '✓' : rsvp.plus_one_approved === false ? '✗' : '⏳'}
+                                  </span>
+                                )}
                               </div>
+                              {rsvp.plus_one_requested && rsvp.plus_one_approved === null && (
+                                <div className="dashboard-plusone-actions">
+                                  <span className="dashboard-plusone-label">+1 {rsvp.plus_one_name || ''}?</span>
+                                  <button type="button" className="dashboard-plusone-btn dashboard-plusone-btn--yes" onClick={() => handlePlusOneDecision(rsvp.id, true)}>Approve</button>
+                                  <button type="button" className="dashboard-plusone-btn" onClick={() => handlePlusOneDecision(rsvp.id, false)}>Deny</button>
+                                </div>
+                              )}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                              {rsvp.status === 'going' && (
+                                <button
+                                  className={`dashboard-checkin-btn ${rsvp.checked_in ? 'is-in' : ''}`}
+                                  type="button"
+                                  title={rsvp.checked_in ? 'Checked in — tap to undo' : 'Check in at the door'}
+                                  onClick={() => handleToggleCheckIn(rsvp)}
+                                >
+                                  {rsvp.checked_in ? '✅ In' : 'Check in'}
+                                </button>
+                              )}
                               <span
                                 className={`dashboard-guest-row__status dashboard-guest-row__status--${rsvp.status}`}
                               >
@@ -779,6 +1177,35 @@ export default function PartyDashboard() {
                       </div>
                     );
                   })}
+                </div>
+              </Card>
+
+              {/* Manage party — delete before it's over, archive after */}
+              <p className="dashboard-section-title" style={{ marginTop: 'var(--space-xl)' }}>Manage Party</p>
+              <Card className="dashboard-guest-list__card">
+                <div className="dashboard-manage">
+                  {event.archived ? (
+                    <>
+                      <p className="dashboard-manage__note">This party is archived. You can delete it permanently to clear it from your records — this also removes its RSVPs, expenses and photos.</p>
+                      <button type="button" className="dashboard-manage__btn dashboard-manage__btn--delete" onClick={handleDeleteParty}>
+                        🗑 Delete party
+                      </button>
+                    </>
+                  ) : over ? (
+                    <>
+                      <p className="dashboard-manage__note">This party is over. You can archive it to tidy up your list — it stays in your records.</p>
+                      <button type="button" className="dashboard-manage__btn dashboard-manage__btn--archive" onClick={handleArchiveParty}>
+                        🗄️ Archive party
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="dashboard-manage__note">Cancelled the plan? You can delete this party while it's still upcoming. Once it's over you'll archive it instead.</p>
+                      <button type="button" className="dashboard-manage__btn dashboard-manage__btn--delete" onClick={handleDeleteParty}>
+                        🗑 Delete party
+                      </button>
+                    </>
+                  )}
                 </div>
               </Card>
             </div>
@@ -884,6 +1311,68 @@ export default function PartyDashboard() {
                         onChange={e => setExpenseAmount(e.target.value)}
                       />
                     </div>
+
+                    {/* Split type + receipt */}
+                    <div className="dashboard-split-controls">
+                      <div className="dashboard-split-toggle">
+                        <button
+                          type="button"
+                          className={expenseSplitType === 'equal' ? 'active' : ''}
+                          onClick={() => setExpenseSplitType('equal')}
+                        >
+                          Split equally
+                        </button>
+                        <button
+                          type="button"
+                          className={expenseSplitType === 'custom' ? 'active' : ''}
+                          onClick={() => {
+                            const amt = Number(expenseAmount) || 0;
+                            const per = Math.round(amt / (goingRsvps.length || 1));
+                            const shares = {};
+                            goingRsvps.forEach(r => { shares[r.id] = per; });
+                            setExpenseShares(shares);
+                            setExpenseSplitType('custom');
+                          }}
+                        >
+                          Custom split
+                        </button>
+                      </div>
+
+                      {expenseSplitType === 'custom' && (
+                        goingRsvps.length === 0 ? (
+                          <p className="dashboard-custom-split__empty">No going guests to split between yet.</p>
+                        ) : (
+                          <div className="dashboard-custom-split">
+                            {goingRsvps.map(r => (
+                              <div className="dashboard-custom-split__row" key={r.id}>
+                                <span className="dashboard-custom-split__name">{r.guest_name}</span>
+                                <div className="dashboard-custom-split__amt">
+                                  <span>₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={expenseShares[r.id] ?? ''}
+                                    onChange={e => setExpenseShares(s => ({ ...s, [r.id]: e.target.value }))}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                            <div
+                              className="dashboard-custom-split__total"
+                              style={{ color: customSplitSum === (Number(expenseAmount) || 0) ? 'var(--neon-lime)' : 'var(--neon-pink)' }}
+                            >
+                              Assigned ₹{customSplitSum} / ₹{Number(expenseAmount) || 0}
+                            </div>
+                          </div>
+                        )
+                      )}
+
+                      <button type="button" className="dashboard-receipt-btn" onClick={() => receiptInputRef.current?.click()}>
+                        {expenseReceipt ? '🧾 Receipt attached ✓' : '🧾 Attach receipt (optional)'}
+                      </button>
+                      <input ref={receiptInputRef} type="file" accept="image/*" hidden onChange={handleReceiptUpload} />
+                    </div>
+
                     <div className="dashboard-add-expense__btn">
                       <Btn variant="lime" type="submit">
                         Add
@@ -957,7 +1446,7 @@ export default function PartyDashboard() {
                     variant="pink"
                     onClick={() => setShowPaymentModal(true)}
                   >
-                    Pay Split Share 💳
+                    Pay Split Share
                   </Btn>
                 </div>
               </div>
@@ -1047,7 +1536,7 @@ export default function PartyDashboard() {
                       <div className="dashboard-photo-lock__text">
                         Photos unlock at <span className="dashboard-photo-lock__time">2:00 AM</span>
                         <br />
-                        Keep vibing, stop scrolling 💫
+                        Keep vibing, stop scrolling
                       </div>
                     </div>
                   )}
@@ -1070,9 +1559,9 @@ export default function PartyDashboard() {
                     {(photos.length > 0 ? photos : PLACEHOLDER_PHOTOS).map(photo => (
                       <div className="dashboard-photo-placeholder" key={photo.id}>
                         <div className="dashboard-photo-placeholder__img">
-                          {photo.photo_url ? (
+                          {safeImageSrc(photo.photo_url) ? (
                             <img
-                              src={photo.photo_url}
+                              src={safeImageSrc(photo.photo_url)}
                               alt={photo.caption || 'Party photo'}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
@@ -1160,10 +1649,90 @@ export default function PartyDashboard() {
             </div>
           </div>
         )}
+
+        {/* ---- TAB 5: PAYMENT APPROVALS (host/co-host only) ---- */}
+        {activeTab === 'approvals' && isManager && (
+          <div className="dashboard-tab-panel" key="approvals">
+            <div className="dashboard-approvals">
+              <div className="dashboard-approval-tabs">
+                {['pending', 'approved', 'declined'].map(tab => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`dashboard-approval-tab${approvalSubTab === tab ? ' is-active' : ''}`}
+                    onClick={() => setApprovalSubTab(tab)}
+                  >
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    <span className="dashboard-approval-tab__count">{approvalCounts[tab]}</span>
+                  </button>
+                ))}
+              </div>
+
+              <input
+                className="dashboard-approval-search"
+                type="search"
+                value={approvalSearch}
+                onChange={e => setApprovalSearch(e.target.value)}
+                placeholder="Search by phone number, name, or UTR…"
+                aria-label="Search payments"
+              />
+
+              {approvalRows.length === 0 ? (
+                <p className="dashboard-approval-empty">
+                  {approvalSearch.trim() ? `No ${approvalSubTab} payments match "${approvalSearch.trim()}".` : `No ${approvalSubTab} payments.`}
+                </p>
+              ) : (
+                <div className="dashboard-approval-list">
+                  {approvalRows.map(p => (
+                    <div className="dashboard-approval-row" key={p.id}>
+                      <div className="dashboard-approval-row__info">
+                        <span className="dashboard-approval-row__name">{p.paid_by || 'Guest'}</span>
+                        <span className="dashboard-approval-row__amount">{formatINR(p.amount || 0)}</span>
+                        {p.phone && <span className="dashboard-approval-row__meta">Phone: {p.phone}</span>}
+                        <span className="dashboard-approval-row__meta">UTR: {p.transaction_id}</span>
+                      </div>
+                      <div className="dashboard-approval-row__actions">
+                        {approvalSubTab !== 'approved' && (
+                          <button type="button" className="dashboard-approval-btn dashboard-approval-btn--approve" onClick={() => decidePayment(p.id, 'approved')}>
+                            Approve
+                          </button>
+                        )}
+                        {approvalSubTab !== 'declined' && (
+                          <button type="button" className="dashboard-approval-btn dashboard-approval-btn--decline" onClick={() => decidePayment(p.id, 'declined')}>
+                            Decline
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========== TOAST ========== */}
       {toast && <div className="dashboard-toast">{toast}</div>}
+
+      {/* ========== In-app confirmation (replaces window.confirm) ========== */}
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        danger={!!confirmState?.danger}
+        onConfirm={confirmState?.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+
+      {/* ========== Party-member profile peek ========== */}
+      <ProfilePeek open={!!peek} person={peek} onClose={() => setPeek(null)} />
+
+      {/* ========== Door scanner (host/co-host only) ========== */}
+      {isManager && (
+        <QRScanner open={showScanner} onDecode={handleScanDecode} onClose={() => setShowScanner(false)} />
+      )}
 
       {/* ========== Payment Checkout Modal ========== */}
       <PaymentModal
@@ -1173,7 +1742,8 @@ export default function PartyDashboard() {
         upiId={event.upi_id || 'lowkey@okaxis'}
         payeeName={event.host_name || 'LowKey Host'}
         note={`Split Settlement: ${event.name}`}
-        onPaymentSuccess={handlePaymentSuccess}
+        defaultPhone={currentUser?.phone || ''}
+        onPaymentSubmitted={handlePaymentSubmitted}
       />
     </div>
   );

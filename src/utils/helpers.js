@@ -225,6 +225,83 @@ export function formatINR(amount) {
 }
 
 /**
+ * Resolve a party's end Date from its date + time fields.
+ * @param {Object} event
+ * @returns {Date|null}
+ */
+export function getEventEnd(event) {
+  if (!event?.date) return null;
+  const start = new Date(`${event.date}T${event.time_start || '19:00'}:00`);
+  let end;
+  if (event.time_end) {
+    end = new Date(`${event.date}T${event.time_end}:00`);
+    if (event.time_end_next_day || end <= start) end.setDate(end.getDate() + 1);
+  } else {
+    end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+  }
+  return end;
+}
+
+/**
+ * Whether a party is over (its end time has passed).
+ * @param {Object} event
+ * @returns {boolean}
+ */
+export function isEventOver(event) {
+  const end = getEventEnd(event);
+  return end ? new Date() > end : false;
+}
+
+/**
+ * An ISO timestamp `hours` from now — used for payment approval windows.
+ * @param {number} hours
+ * @returns {string}
+ */
+export function computePaymentDeadline(hours) {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * Whether now is within 1 day of a party's start time.
+ * @param {Object} event
+ * @returns {boolean}
+ */
+export function isWithinOneDayOfParty(event) {
+  if (!event?.date) return false;
+  const start = new Date(`${event.date}T${event.time_start || '19:00'}:00`);
+  return start - new Date() <= 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Entry-QR gating for a guest's ticket. It's only generated (and scannable)
+ * once any cover charge has been host-approved AND the party is within 1 day
+ * — before that it stays locked, with a reason so the UI can explain why.
+ * @param {Object} event
+ * @param {Object} rsvp
+ * @returns {{ unlocked: boolean, reason: 'payment'|'time'|null }}
+ */
+export function getEntryQrState(event, rsvp) {
+  if (!event || !rsvp || rsvp.status !== 'going') return { unlocked: false, reason: 'payment' };
+  const needsPayment = Number(event.cover_charge) > 0;
+  const paid = !needsPayment || rsvp.cover_paid === true;
+  if (!paid) return { unlocked: false, reason: 'payment' };
+  if (!isWithinOneDayOfParty(event)) return { unlocked: false, reason: 'time' };
+  return { unlocked: true, reason: null };
+}
+
+/**
+ * Whether a user manages a party — the host, or listed as a co-host by id.
+ * @param {Object} event
+ * @param {string} userId
+ * @returns {boolean}
+ */
+export function isPartyManager(event, userId) {
+  if (!event || !userId) return false;
+  if (event.host_id === userId) return true;
+  return (event.co_hosts || []).some((c) => typeof c === 'object' && c.id === userId);
+}
+
+/**
  * Sanitize a user-supplied URL for use in href/src. Only http(s) links are
  * allowed — this blocks `javascript:`, `data:`, `vbscript:` etc. which would
  * otherwise enable stored XSS via host-controlled fields (DJ links, playlists…).
@@ -235,5 +312,30 @@ export function safeUrl(url) {
   if (!url || typeof url !== 'string') return undefined;
   const trimmed = url.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return undefined;
+}
+
+/**
+ * Sanitize a user-supplied image source for use in `<img src>`.
+ *
+ * Default (allowRemote = true): permits http(s) URLs and inline
+ * `data:image/...` payloads — for the photo dump, whose URLs are hosted on
+ * Supabase Storage with a base64 fallback.
+ *
+ * allowRemote = false: permits ONLY `data:image/...`. Used for profile
+ * pictures, which this app always produces as base64 data URLs — so a hosted
+ * URL there could only be a malicious value set to beacon the viewer's IP
+ * when their profile is displayed. Restricting to data: closes that.
+ *
+ * Either way this blocks `data:text/html`, `javascript:`, and other schemes.
+ * @param {string} src
+ * @param {{ allowRemote?: boolean }} [opts]
+ * @returns {string|undefined} the src if safe, else undefined
+ */
+export function safeImageSrc(src, { allowRemote = true } = {}) {
+  if (!src || typeof src !== 'string') return undefined;
+  const trimmed = src.trim();
+  if (/^data:image\//i.test(trimmed)) return trimmed;
+  if (allowRemote && /^https?:\/\//i.test(trimmed)) return trimmed;
   return undefined;
 }

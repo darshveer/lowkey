@@ -31,7 +31,6 @@
   pointer-events: none;
   z-index: 500;
   filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.55));
-  animation: locPinBob 1.6s var(--ease-out) infinite;
 }
 
 /* subtle drop shadow dot on the ground under the pin */
@@ -46,11 +45,6 @@
   background: rgba(0, 0, 0, 0.4);
   border-radius: 50%;
   filter: blur(1px);
-}
-
-@keyframes locPinBob {
-  0%, 100% { transform: translate(-50%, -100%); }
-  50% { transform: translate(-50%, -108%); }
 }
 
 .loc-picker__hint {

@@ -39,7 +39,7 @@ export async function generateUPIQR(params) {
     width: 280,
     margin: 2,
     color: {
-      dark: '#F4F4F4',
+      dark: '#0B0B14', // dark modules — must contrast the light bg to be scannable
       light: '#FFFFFF', // solid white background
     },
     errorCorrectionLevel: 'H',

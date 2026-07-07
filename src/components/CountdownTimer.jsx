@@ -8,8 +8,9 @@ import './CountdownTimer.css';
  * @param {Object} props
  * @param {string} props.targetDate - Target date in YYYY-MM-DD format
  * @param {string} props.targetTime - Target time in HH:mm format
+ * @param {boolean} [props.isOver] - The party has ended (end time passed)
  */
-export default function CountdownTimer({ targetDate, targetTime }) {
+export default function CountdownTimer({ targetDate, targetTime, isOver = false }) {
   const [countdown, setCountdown] = useState(() => getCountdown(targetDate, targetTime));
 
   useEffect(() => {
@@ -22,11 +23,23 @@ export default function CountdownTimer({ targetDate, targetTime }) {
 
   const pad = (n) => String(n).padStart(2, '0');
 
+  // Party is over: end time has passed.
+  if (isOver) {
+    return (
+      <div className="countdown-timer">
+        <div className="countdown-timer__done countdown-timer__done--over">
+          <span className="countdown-timer__done-text">That's a wrap</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Start time reached (and not yet over): the party is happening now.
   if (countdown.isPast) {
     return (
       <div className="countdown-timer">
         <div className="countdown-timer__done">
-          <span className="countdown-timer__done-text">🔥 IT'S TIME</span>
+          <span className="countdown-timer__done-text">The party is live</span>
         </div>
       </div>
     );

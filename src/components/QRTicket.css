@@ -1,0 +1,98 @@
+.qr-ticket {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--gradient-card);
+  border: 1px dashed var(--glass-border-strong);
+}
+
+.qr-ticket__stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.qr-ticket__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--neon-purple);
+}
+
+.qr-ticket__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.qr-ticket__count {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.qr-ticket__code {
+  width: 200px;
+  height: 200px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.qr-ticket__code img { width: 100%; height: 100%; }
+
+.qr-ticket__loading {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--neon-purple);
+  animation: spin 0.8s linear infinite;
+}
+
+.qr-ticket__checked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 48px;
+  color: var(--neon-lime);
+  filter: none;
+}
+
+.qr-ticket__checked span {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.qr-ticket--in .qr-ticket__code { background: rgba(204, 255, 0, 0.12); }
+
+.qr-ticket__hint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.qr-ticket__locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 40px;
+  color: #6b7280;
+}
+.qr-ticket__locked span {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #6b7280;
+}
+.qr-ticket--pending .qr-ticket__code {
+  background: repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 10px, #e5e7eb 10px, #e5e7eb 20px);
+}

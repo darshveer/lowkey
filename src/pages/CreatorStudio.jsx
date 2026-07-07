@@ -56,6 +56,8 @@ export default function CreatorStudio() {
   const [djInstagram, setDjInstagram] = useState('');
   const [containsAlcohol, setContainsAlcohol] = useState(false);
   const [externalPhotoLink, setExternalPhotoLink] = useState('');
+  const [vibeWallEnabled, setVibeWallEnabled] = useState(true);
+  const [vibeWallClosesAt, setVibeWallClosesAt] = useState('');
 
   /** Returns true if end time is on the next day relative to start time */
   const isNextDay = timeStart && timeEnd && timeEnd < timeStart;
@@ -155,7 +157,7 @@ export default function CreatorStudio() {
     if (!eventId) setEventId(id);
     const url = getShareUrl(id);
     const shared = await shareLink({ title: name, text: `You're invited to ${name}!`, url });
-    if (shared) flash('Link copied! 🔗');
+    if (shared) flash('Link copied!');
   };
 
   /** Share invite via WhatsApp */
@@ -201,6 +203,8 @@ export default function CreatorStudio() {
       photo_dump_unlocked: false,
       contains_alcohol: containsAlcohol,
       external_photo_link: externalPhotoLink.trim() || null,
+      vibe_wall_enabled: vibeWallEnabled,
+      vibe_wall_closes_at: vibeWallClosesAt ? new Date(vibeWallClosesAt).toISOString() : null,
     };
 
     saveEvent(event);
@@ -544,6 +548,36 @@ export default function CreatorStudio() {
           </span>
           <span className={`creator-dj-card__switch${containsAlcohol ? ' creator-dj-card__switch--active' : ''}`} />
         </button>
+      </div>
+
+      <div className="creator-dj-card" style={{ marginTop: '16px' }}>
+        <button
+          className="creator-dj-card__toggle"
+          type="button"
+          onClick={() => setVibeWallEnabled(!vibeWallEnabled)}
+          aria-pressed={vibeWallEnabled}
+        >
+          <span>
+            <strong>Vibe Wall</strong>
+            <small>A live comment wall on the invite where guests drop hype — updates in realtime. Turn off for a quieter invite.</small>
+          </span>
+          <span className={`creator-dj-card__switch${vibeWallEnabled ? ' creator-dj-card__switch--active' : ''}`} />
+        </button>
+        {vibeWallEnabled && (
+          <div className="creator-dj-card__fields">
+            <label className="creator-field__label" htmlFor="vibe-close">Auto-close timer (optional)</label>
+            <input
+              id="vibe-close"
+              className="input-glass"
+              type="datetime-local"
+              value={vibeWallClosesAt}
+              onChange={(e) => setVibeWallClosesAt(e.target.value)}
+            />
+            <small className="form-help">
+              Leave blank to keep it open forever. Pick a time and new posts stop after it (e.g. an hour after the party ends).
+            </small>
+          </div>
+        )}
       </div>
     </div>
   );

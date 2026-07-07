@@ -1,4 +1,4 @@
-import { getOSMEmbedUrl, getOSMDirectionsUrl, getOSMMarkerUrl } from '../utils/geo';
+import { getOSMEmbedUrl, getGoogleDirectionsUrl, getOSMMarkerUrl } from '../utils/geo';
 import './MapPreview.css';
 
 /**
@@ -15,7 +15,7 @@ import './MapPreview.css';
 export default function MapPreview({ lat, lng, name, address, compact = false }) {
   const hasCoords = isFinite(lat) && isFinite(lng);
   const embedUrl = getOSMEmbedUrl({ lat, lng });
-  const directionsUrl = getOSMDirectionsUrl({ lat, lng, address });
+  const directionsUrl = getGoogleDirectionsUrl({ lat, lng, address });
   const markerUrl = getOSMMarkerUrl({ lat, lng });
 
   return (
@@ -29,7 +29,6 @@ export default function MapPreview({ lat, lng, name, address, compact = false })
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
           />
-          <div className="map-preview__pin" aria-hidden="true">📍</div>
         </div>
       ) : (
         <div className="map-preview__placeholder">

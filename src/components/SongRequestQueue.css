@@ -1,0 +1,101 @@
+.song-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.song-queue__form {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.song-queue__input {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+}
+
+.song-queue__add {
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: #fff;
+  background: var(--gradient-lime);
+  color: var(--text-inverse);
+}
+
+.song-queue__add:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.song-queue__empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-md);
+}
+
+.song-queue__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.song-queue__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md);
+}
+
+.song-queue__rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.song-queue__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.song-queue__title {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-queue__by {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.song-queue__vote {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--neon-lime);
+  background: rgba(204, 255, 0, 0.12);
+  border: 1px solid rgba(204, 255, 0, 0.28);
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.song-queue__vote:hover { transform: scale(1.05); }

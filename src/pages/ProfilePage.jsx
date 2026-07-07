@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getEvents, updateUserProfile, addNotification } from '../utils/storage';
-import { formatINR, formatDate, getInitials, getAvatarGradient } from '../utils/helpers';
+import { getEvents, updateUserProfile, addNotification, duplicateEvent, resyncToCloud } from '../utils/storage';
+import { formatINR, formatDate, getInitials, getAvatarGradient, safeImageSrc } from '../utils/helpers';
 import { ACHIEVEMENTS, computeStats, earnedKeys } from '../data/achievements';
 import AchievementBadge from '../components/AchievementBadge';
 import Reveal from '../components/Reveal';
@@ -21,6 +21,27 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
   const { show } = useToast();
   const fileRef = useRef(null);
   const persistedRef = useRef(false);
+  const [resyncing, setResyncing] = useState(false);
+
+  const handleResync = async () => {
+    setResyncing(true);
+    show('Re-syncing with the cloud…', 'info');
+    try {
+      const { pushed, failed, firstError } = await resyncToCloud();
+      if (failed > 0 && firstError) {
+        console.error('Re-sync error:', firstError);
+        show(`Synced ${pushed}, ${failed} failed — ${firstError}`, 'error', 9000);
+      } else if (pushed === 0) {
+        show('Nothing to sync — no parties hosted by you on this device.', 'info', 5000);
+      } else {
+        show(`Re-synced ${pushed} item${pushed > 1 ? 's' : ''} to the cloud.`, 'success', 5000);
+      }
+    } catch (e) {
+      show(`Re-sync failed — ${e.message || 'check your connection'}.`, 'error');
+    } finally {
+      setResyncing(false);
+    }
+  };
 
   // Not signed in → send to login
   useEffect(() => {
@@ -51,6 +72,34 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
       .map((e) => ({ ...e, expired: e.date < today }));
   }, [events, currentUser]);
 
+  // Hosted-parties tabs + search. "Archived" = explicitly archived; "Active" =
+  // everything else (upcoming + wrapped-but-not-archived).
+  const [partyTab, setPartyTab] = useState('active');
+  const [partyQuery, setPartyQuery] = useState('');
+
+  const visibleParties = useMemo(() => {
+    const q = partyQuery.trim().toLowerCase();
+    return hostedParties
+      .filter((p) => (partyTab === 'archived' ? p.archived : !p.archived))
+      .filter((p) => {
+        if (!q) return true;
+        const haystack = [
+          p.name,
+          p.location_name,
+          p.location_address,
+          p.city,
+          ...(p.vibe_tags || []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+  }, [hostedParties, partyTab, partyQuery]);
+
+  const activeCount = useMemo(() => hostedParties.filter((p) => !p.archived).length, [hostedParties]);
+  const archivedCount = useMemo(() => hostedParties.filter((p) => p.archived).length, [hostedParties]);
+
   // Persist newly-earned achievements to the profile + notify the user once.
   useEffect(() => {
     if (!currentUser || persistedRef.current) return;
@@ -70,12 +119,12 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
       addNotification({
         recipient_id: currentUser.id,
         type: 'achievement',
-        title: 'Achievement unlocked 🏆',
+        title: 'Achievement unlocked',
         body: meta ? `${meta.name} — ${meta.desc}` : 'You earned a new badge',
         link: '/profile',
       });
     });
-    show(`Unlocked ${fresh.length} achievement${fresh.length > 1 ? 's' : ''}! 🏆`, 'success');
+    show(`Unlocked ${fresh.length} achievement${fresh.length > 1 ? 's' : ''}!`, 'success');
   }, [earned, currentUser, show]);
 
   if (!currentUser) return null;
@@ -115,8 +164,8 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
           title="Change photo"
           type="button"
         >
-          {currentUser.profile_pic_b64 ? (
-            <img src={currentUser.profile_pic_b64} alt={currentUser.name} className="profile-avatar-img" />
+          {safeImageSrc(currentUser.profile_pic_b64, { allowRemote: false }) ? (
+            <img src={safeImageSrc(currentUser.profile_pic_b64, { allowRemote: false })} alt={currentUser.name} className="profile-avatar-img" />
           ) : (
             <span className="profile-avatar-fallback" style={{ background: getAvatarGradient(currentUser.name || 'U') }}>
               {getInitials(currentUser.name || 'U')}
@@ -135,9 +184,20 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
           </div>
         </div>
 
-        <button className="profile-create-btn" onClick={() => navigate('/create')} type="button">
-          + New party
-        </button>
+        <div className="profile-header-actions">
+          <button className="profile-create-btn" onClick={() => navigate('/create')} type="button">
+            + New party
+          </button>
+          <button
+            className="profile-resync-btn"
+            onClick={handleResync}
+            disabled={resyncing}
+            type="button"
+            title="Re-push your local data to the cloud and pull the latest"
+          >
+            {resyncing ? '☁️ Syncing…' : '☁️ Re-sync'}
+          </button>
+        </div>
       </section>
 
       {/* Next party highlight */}
@@ -189,18 +249,78 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
             </button>
           </div>
         ) : (
-          <div className="profile-party-list">
-            {hostedParties.map((p) => (
-              <Link key={p.id} to={`/party/${p.id}`} className={`profile-party glass pressable ${p.expired ? 'is-expired' : ''}`}>
-                <div className={`profile-party__accent theme-${p.theme || 'neon'}`} />
-                <div className="profile-party__body">
-                  <h4 className="profile-party__name">{p.name}</h4>
-                  <p className="profile-party__meta">{formatDate(p.date)}{p.expired ? ' · wrapped' : ''}</p>
-                </div>
-                <span className="profile-party__arrow">→</span>
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="profile-party-tabs">
+              <button
+                type="button"
+                className={`profile-party-tab${partyTab === 'active' ? ' is-active' : ''}`}
+                onClick={() => setPartyTab('active')}
+              >
+                Active <span className="profile-party-tab__count">{activeCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`profile-party-tab${partyTab === 'archived' ? ' is-active' : ''}`}
+                onClick={() => setPartyTab('archived')}
+              >
+                Archived <span className="profile-party-tab__count">{archivedCount}</span>
+              </button>
+            </div>
+
+            <div className="profile-party-search">
+              <input
+                className="profile-party-search__input"
+                type="search"
+                value={partyQuery}
+                onChange={(e) => setPartyQuery(e.target.value)}
+                placeholder="Search your parties by name, venue, city or tag…"
+                aria-label="Search your hosted parties"
+              />
+            </div>
+
+            {visibleParties.length === 0 ? (
+              <div className="profile-empty glass">
+                <p>
+                  {partyQuery.trim()
+                    ? `No ${partyTab} parties match "${partyQuery.trim()}".`
+                    : partyTab === 'archived'
+                      ? 'No archived parties yet.'
+                      : 'No active parties right now.'}
+                </p>
+              </div>
+            ) : (
+              <div className="profile-party-list">
+                {visibleParties.map((p) => (
+                  <div key={p.id} className={`profile-party glass ${p.expired ? 'is-expired' : ''}`}>
+                    <Link to={`/party/${p.id}`} className="profile-party__link pressable">
+                      <div className={`profile-party__accent theme-${p.theme || 'neon'}`} />
+                      <div className="profile-party__body">
+                        <h4 className="profile-party__name">{p.name}</h4>
+                        <p className="profile-party__meta">
+                          {formatDate(p.date)}
+                          {p.archived ? ' · archived' : p.expired ? ' · wrapped' : ''}
+                        </p>
+                      </div>
+                    </Link>
+                    <button
+                      type="button"
+                      className="profile-party__dup"
+                      title="Duplicate as a template"
+                      onClick={() => {
+                        const copy = duplicateEvent(p.id, currentUser);
+                        if (copy) {
+                          show('Party duplicated — set a new date', 'success');
+                          navigate(`/party/${copy.id}`);
+                        }
+                      }}
+                    >
+                      ⧉ Duplicate
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </Reveal>
     </div>

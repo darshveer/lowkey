@@ -7,6 +7,7 @@ import AnimatedBackground from './components/AnimatedBackground';
 import CursorGlow from './components/CursorGlow';
 import Logo from './components/Logo';
 import { getCurrentUser, logoutUser, initAuth } from './utils/storage';
+import { useToast } from './hooks/useToast';
 import './App.css';
 
 // Route-level code splitting keeps the initial bundle lean — the heavier
@@ -27,6 +28,7 @@ function RouteFallback() {
 
 function App() {
   const location = useLocation();
+  const { show } = useToast();
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState('discover');
   const [loginRedirect, setLoginRedirect] = useState(false);
@@ -36,6 +38,23 @@ function App() {
     const unsubscribe = initAuth((profile) => setCurrentUser(profile));
     return unsubscribe;
   }, []);
+
+  // Surface cloud-write failures (throttled) so they're never silent again.
+  useEffect(() => {
+    let cooling = false;
+    const onSyncError = () => {
+      if (cooling) return;
+      cooling = true;
+      show(
+        "Saved locally, but couldn't sync to the cloud. Check your Supabase connection/schema, then re-sync from your profile.",
+        'error',
+        6000
+      );
+      setTimeout(() => { cooling = false; }, 15000);
+    };
+    window.addEventListener('lowkey_sync_error', onSyncError);
+    return () => window.removeEventListener('lowkey_sync_error', onSyncError);
+  }, [show]);
 
   // Keep the session in sync when other parts of the app mutate the user
   // (e.g. profile-picture upload dispatches `lowkey_db_sync`).

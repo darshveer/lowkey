@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { safeImageSrc } from '../utils/helpers';
 import './PhotoGrid.css';
 
 /**
@@ -70,7 +71,7 @@ export default function PhotoGrid({ photos = [], onUpload, isLocked = false, tim
             <div key={photo.id} className="photo-grid__frame" onClick={() => setSelectedPhoto(photo)}>
               <img
                 className="photo-grid__image"
-                src={photo.photo_url}
+                src={safeImageSrc(photo.photo_url)}
                 alt={photo.caption || `Photo by ${photo.uploaded_by || 'guest'}`}
                 loading="lazy"
                 style={photo.filter ? { filter: photo.filter } : undefined}
@@ -118,10 +119,10 @@ export default function PhotoGrid({ photos = [], onUpload, isLocked = false, tim
         <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
           <button className="lightbox-close" onClick={() => setSelectedPhoto(null)} aria-label="Close" type="button">✕</button>
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <img 
-              src={selectedPhoto.photo_url} 
-              alt="Full size view" 
-              className="lightbox-image" 
+            <img
+              src={safeImageSrc(selectedPhoto.photo_url)}
+              alt="Full size view"
+              className="lightbox-image"
               style={selectedPhoto.filter ? { filter: selectedPhoto.filter } : undefined}
             />
             <div className="lightbox-footer">

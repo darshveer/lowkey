@@ -2,13 +2,20 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import AvatarStack from '../components/AvatarStack';
+import ProfilePeek from '../components/ProfilePeek';
 import SpotifyEmbed from '../components/SpotifyEmbed';
 import MapPreview from '../components/MapPreview';
 import VibeWall from '../components/VibeWall';
 import Reveal from '../components/Reveal';
-import { getEvent, getRSVPs, addRSVP, getCurrentUser } from '../utils/storage';
-import { generateId, formatDate, formatTime, getInitials, getAvatarGradient, safeUrl } from '../utils/helpers';
+import CalendarButton from '../components/CalendarButton';
+import WeatherWidget from '../components/WeatherWidget';
+import SongRequestQueue from '../components/SongRequestQueue';
+import AnnouncementsPanel from '../components/AnnouncementsPanel';
+import QRTicket from '../components/QRTicket';
+import { getEvent, getRSVPs, addRSVP, updateRSVP, addPayment, getCurrentUser, toggleFollow, isFollowing, getProfile, subscribeToEvent, checkPaymentDeadlines } from '../utils/storage';
+import { generateId, formatDate, formatTime, getInitials, getAvatarGradient, safeUrl, computePaymentDeadline } from '../utils/helpers';
 import PaymentModal from '../components/PaymentModal';
+import { useToast } from '../hooks/useToast';
 import './GuestInvite.css';
 
 /** Confetti color palette */
@@ -32,11 +39,28 @@ const CONFETTI_DOTS = Array.from({ length: 30 }, (_, i) => ({
  */
 export default function GuestInvite() {
   const { eventId } = useParams();
+  const { show } = useToast();
   const [currentUser] = useState(() => getCurrentUser());
 
   // Event & RSVP data (real data only — null if the party doesn't exist)
   const [event] = useState(() => getEvent(eventId));
   const [rsvps, setRsvps] = useState(() => getRSVPs(eventId));
+  const [peek, setPeek] = useState(null);
+
+  // Lazy sweep: expire unpaid RSVPs past their deadline + promote the
+  // waitlist, and remind guests whose deadline is approaching. There's no
+  // background job in this app, so this runs whenever the invite page loads.
+  useEffect(() => {
+    if (!eventId) return;
+    checkPaymentDeadlines(eventId);
+  }, [eventId]);
+
+  // Open the profile peek for anyone at the party (host, co-host, guest).
+  const openPeek = (userId, fallbackName) => {
+    if (!userId) return;
+    const p = getProfile(userId);
+    setPeek({ id: userId, ...(p || {}), name: p?.name || fallbackName });
+  };
 
   const [submitted, setSubmitted] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -61,9 +85,14 @@ export default function GuestInvite() {
     .filter(r => r.status === 'going' && (!existingRsvp || r.id !== existingRsvp.id))
     .reduce((sum, r) => sum + (r.guest_count || 1), 0);
   const maybeCount = rsvps.filter(r => r.status === 'maybe').length;
-  const guestNames = rsvps
+  const guestPeople = rsvps
     .filter(r => r.status === 'going')
-    .map(r => r.guest_name);
+    .map(r => ({ name: r.guest_name, userId: r.user_id || null }));
+
+  // Co-hosts — { email, id, username, name } entries; legacy strings normalized.
+  const inviteCoHosts = (event?.co_hosts || []).map((c) =>
+    typeof c === 'string' ? { name: c, email: null, id: null, username: null } : c
+  );
 
   const availableCapacity = event?.capacity ? Math.max(0, event.capacity - goingCount) : Infinity;
 
@@ -71,8 +100,47 @@ export default function GuestInvite() {
   const [guestName, setGuestName] = useState(() => existingRsvp ? existingRsvp.guest_name : (currentUser ? currentUser.name : ''));
   const [guestDob, setGuestDob] = useState('');
   const [ageError, setAgeError] = useState('');
-  
-  const defaultFood = existingRsvp && typeof existingRsvp.poll_food === 'object' && existingRsvp.poll_food !== null 
+  const [plusOneName, setPlusOneName] = useState(() => existingRsvp?.plus_one_name || '');
+  const [submittedRsvp, setSubmittedRsvp] = useState(null);
+  // Phone prefills from the signed-in profile only — it is no longer read back
+  // from the RSVP (which no longer stores it; see the rsvpData note below).
+  const [guestPhone, setGuestPhone] = useState(() => currentUser?.phone || '');
+  const [following, setFollowing] = useState(() =>
+    currentUser && event?.host_id ? isFollowing(currentUser.id, event.host_id) : false
+  );
+  const canFollow = currentUser && event?.host_id && currentUser.id !== event.host_id;
+
+  // Live sync so an approval, decline, or deadline-expiry from another
+  // session (the host's dashboard, or the sweep above running elsewhere)
+  // reflects immediately — this is what unlocks the entry QR without a reload.
+  useEffect(() => {
+    if (!eventId) return;
+    return subscribeToEvent(eventId, {
+      onRsvp: (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old?.id;
+          if (!deletedId) return;
+          setRsvps(prev => prev.filter(r => r.id !== deletedId));
+          setSubmittedRsvp(prev => (prev && prev.id === deletedId ? null : prev));
+          return;
+        }
+        const row = payload.new;
+        if (!row) return;
+        setRsvps(prev => {
+          const idx = prev.findIndex(r => r.id === row.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], ...row };
+            return copy;
+          }
+          return [...prev, row];
+        });
+        setSubmittedRsvp(prev => (prev && prev.id === row.id ? { ...prev, ...row } : prev));
+      },
+    });
+  }, [eventId]);
+
+  const defaultFood = existingRsvp && typeof existingRsvp.poll_food === 'object' && existingRsvp.poll_food !== null
     ? existingRsvp.poll_food 
     : { veg: existingRsvp ? (existingRsvp.guest_count || 1) : 1, nonveg: 0, vegan: 0 };
   const defaultDrinks = existingRsvp && typeof existingRsvp.poll_drinks === 'object' && existingRsvp.poll_drinks !== null 
@@ -82,6 +150,9 @@ export default function GuestInvite() {
   const [foodBreakdown, setFoodBreakdown] = useState(defaultFood);
   const [drinksBreakdown, setDrinksBreakdown] = useState(defaultDrinks);
   const [guestCount, setGuestCount] = useState(existingRsvp ? existingRsvp.guest_count || 1 : 1);
+
+  // Capacity: is there room for this booking, or does it go to the waitlist?
+  const isWaitlisted = availableCapacity !== Infinity && availableCapacity < guestCount;
 
   const getAge = (dobString) => {
     if (!dobString) return 0;
@@ -99,8 +170,9 @@ export default function GuestInvite() {
   const submitRSVP = (rsvpData) => {
     addRSVP(rsvpData);
     setRsvps(prev => [...prev, rsvpData]);
+    setSubmittedRsvp(rsvpData);
     setSubmitted(true);
-    setShowConfetti(true);
+    if (rsvpData.status !== 'waitlist') setShowConfetti(true);
 
     // Haptic feedback (if supported)
     if (navigator.vibrate) {
@@ -141,77 +213,83 @@ export default function GuestInvite() {
       return;
     }
 
+    // If editing and guestCount hasn't increased, no need to pay again
+    const oldGuestCount = existingRsvp ? (existingRsvp.guest_count || 1) : 0;
+    const additionalGuests = Math.max(0, guestCount - oldGuestCount);
+    const goingToWaitlist = isWaitlisted && !existingRsvp;
+    // Waitlisted guests don't owe a cover until they're promoted.
+    const needsPayment = event.cover_charge > 0 && additionalGuests > 0 && !goingToWaitlist;
+
+    // NOTE: guest_phone and guest_birthdate are deliberately NOT persisted on
+    // the RSVP — the rsvps table is world-readable (rsvps_public_read), so
+    // storing PII there leaks every guest's phone/DOB to anyone with the public
+    // key. The age gate is checked here at submit time (client-side), and the
+    // host-visible copy of the phone lives on payments.phone (host-only read).
     const rsvpData = {
       id: existingRsvp ? existingRsvp.id : generateId(),
       event_id: event.id,
       guest_name: trimmed,
       user_id: currentUser ? currentUser.id : null,
-      guest_phone: null,
-      status: 'going',
+      status: goingToWaitlist ? 'waitlist' : 'going',
       poll_food: foodBreakdown,
       poll_drinks: drinksBreakdown,
-      guest_birthdate: currentUser ? currentUser.birthdate : guestDob,
       guest_count: guestCount,
+      plus_one_requested: !!plusOneName.trim(),
+      plus_one_name: plusOneName.trim() || null,
+      plus_one_approved: plusOneName.trim() ? null : undefined, // null = pending host approval
     };
 
-    // If editing and guestCount hasn't increased, no need to pay again
-    const oldGuestCount = existingRsvp ? (existingRsvp.guest_count || 1) : 0;
-    const additionalGuests = Math.max(0, guestCount - oldGuestCount);
-    
-    if (event.cover_charge > 0 && additionalGuests > 0) {
+    // A cover charge now owed opens a fresh payment window — the RSVP itself
+    // still exists immediately either way, so a guest who never opens the
+    // payment modal (or closes it) keeps their spot only until this deadline.
+    if (needsPayment) {
+      rsvpData.payment_deadline_at = computePaymentDeadline(event.payment_deadline_hours || 12);
+      rsvpData.payment_reminder_sent = false;
+      rsvpData.cover_paid = false;
+    }
+
+    if (existingRsvp) {
+      // Merge onto the existing row (not a full replace) so fields this form
+      // doesn't know about — checked_in, settled, cover_paid, plus_one_approved
+      // — survive an edit instead of being silently wiped.
+      const merged = { ...existingRsvp, ...rsvpData };
+      setRsvps(prev => prev.map(r => (r.id === merged.id ? merged : r)));
+      updateRSVP(merged.id, rsvpData);
+      setSubmittedRsvp(merged);
+      setSubmitted(true);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3500);
+    } else {
+      submitRSVP(rsvpData);
+    }
+
+    if (needsPayment) {
       setPendingRsvp({ ...rsvpData, _additionalGuests: additionalGuests });
       setShowPaymentModal(true);
-    } else {
-      if (existingRsvp) {
-        // Update existing RSVP
-        const updatedRsvps = rsvps.map(r => r.id === rsvpData.id ? rsvpData : r);
-        setRsvps(updatedRsvps);
-        localStorage.setItem('lowkey_rsvps', JSON.stringify(updatedRsvps));
-        setSubmitted(true);
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 3500);
-      } else {
-        submitRSVP(rsvpData);
-      }
     }
   };
 
-  /** Callback when payment is successfully confirmed */
-  const handlePaymentSuccess = ({ gateway, transactionId }) => {
+  /** Callback once a guest submits their UTR — hands off to the host for approval. */
+  const handlePaymentSubmitted = ({ transactionId, phone }) => {
     setShowPaymentModal(false);
     if (!pendingRsvp) return;
 
-    const paymentData = {
+    // The phone is recorded on the (host-only) payment row, not the
+    // world-readable RSVP — so it's available to the host for verification
+    // without leaking to every reader of the invite's guest list.
+
+    addPayment({
       id: 'pay_' + generateId(),
       rsvp_id: pendingRsvp.id,
       event_id: event.id,
-      amount: event.cover_charge * (pendingRsvp._additionalGuests || pendingRsvp.guest_count),
+      amount: event.cover_charge * (pendingRsvp._additionalGuests || pendingRsvp.guest_count || 1),
       paid_by: pendingRsvp.guest_name,
+      phone: phone || null,
       transaction_id: transactionId,
-      gateway: gateway,
-      status: 'success'
-    };
+      gateway: 'upi',
+    });
 
-    // Save payment
-    const storedPayments = JSON.parse(localStorage.getItem('lowkey_payments') || '[]');
-    storedPayments.push(paymentData);
-    localStorage.setItem('lowkey_payments', JSON.stringify(storedPayments));
-
-    const finalRsvp = { ...pendingRsvp };
-    delete finalRsvp._additionalGuests;
-
-    if (existingRsvp) {
-      const updatedRsvps = rsvps.map(r => r.id === finalRsvp.id ? finalRsvp : r);
-      setRsvps(updatedRsvps);
-      localStorage.setItem('lowkey_rsvps', JSON.stringify(updatedRsvps));
-      setSubmitted(true);
-      setShowConfetti(true);
-      setTimeout(() => setShowToast(true), 400);
-      setTimeout(() => setShowConfetti(false), 2000);
-      setTimeout(() => setShowToast(false), 3500);
-    } else {
-      submitRSVP(finalRsvp);
-    }
+    show('Submitted — the host will review your payment shortly.', 'success');
     setPendingRsvp(null);
   };
 
@@ -278,18 +356,71 @@ export default function GuestInvite() {
           <div className="invite-section">
             <GlassCard>
               <div className="invite-host">
-                <div
+                <button
+                  type="button"
                   className="invite-host__avatar"
                   style={{ background: getAvatarGradient(event.host_name) }}
+                  onClick={() => openPeek(event.host_id, event.host_name)}
+                  aria-label={`View ${event.host_name}'s profile`}
                 >
                   {getInitials(event.host_name)}
-                </div>
+                </button>
                 <div className="invite-host__text">
                   hosted by{' '}
-                  <span className="invite-host__name">{event.host_name}</span>
+                  <button
+                    type="button"
+                    className="invite-host__name invite-host__name--link"
+                    onClick={() => openPeek(event.host_id, event.host_name)}
+                  >
+                    {event.host_name}
+                  </button>
+                  {inviteCoHosts.length > 0 && (
+                    <span className="invite-host__cohosts">
+                      {' '}with{' '}
+                      {inviteCoHosts.map((c, i) => (
+                        <span key={c.email || c.name || i}>
+                          {i > 0 && ' · '}
+                          {c.id ? (
+                            <button
+                              type="button"
+                              className="invite-host__name invite-host__name--link"
+                              onClick={() => openPeek(c.id, c.name || c.username)}
+                            >
+                              {c.username ? `@${c.username}` : c.name}
+                            </button>
+                          ) : (
+                            // No account: show a friendly handle, never the full email
+                            <span className="invite-host__name">
+                              {c.name || (c.email ? c.email.split('@')[0] : 'co-host')}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
+                {canFollow && (
+                  <button
+                    type="button"
+                    className={`invite-follow-btn ${following ? 'is-following' : ''}`}
+                    onClick={() => setFollowing(toggleFollow(currentUser.id, event.host_id))}
+                  >
+                    {following ? '✓ Following' : '+ Follow'}
+                  </button>
+                )}
               </div>
             </GlassCard>
+          </div>
+
+          {/* ---- Host announcements (hidden when none) ---- */}
+          <AnnouncementsPanel eventId={event.id} />
+
+          {/* ---- Add to calendar + weather ---- */}
+          <div className="invite-section">
+            <CalendarButton event={event} />
+            <div style={{ marginTop: 'var(--space-md)' }}>
+              <WeatherWidget lat={event.location_lat} lng={event.location_lng} date={event.date} />
+            </div>
           </div>
 
           {/* ---- Personal DJ ---- */}
@@ -319,7 +450,12 @@ export default function GuestInvite() {
           <Reveal className="invite-section" variant="up">
             <h2 className="invite-section__title">Who's Going</h2>
             <div className="invite-going">
-              <AvatarStack names={guestNames} maxDisplay={6} size="md" />
+              <AvatarStack
+                people={guestPeople}
+                maxDisplay={6}
+                size="md"
+                onSelect={(p) => openPeek(p.userId, p.name)}
+              />
               <p className="invite-going__stats">
                 <span>{goingCount} going</span>
                 {maybeCount > 0 && <> · {maybeCount} maybe</>}
@@ -357,17 +493,32 @@ export default function GuestInvite() {
             </div>
           )}
 
-          {/* ---- Vibe Wall ---- */}
+          {/* ---- Song Requests ---- */}
           <Reveal className="invite-section" variant="left">
-            <h2 className="invite-section__title">Vibe Wall</h2>
+            <h2 className="invite-section__title">Song Requests</h2>
             <GlassCard>
-              <VibeWall
+              <SongRequestQueue
                 eventId={event.id}
-                authorName={currentUser ? currentUser.name : guestName}
-                authorId={currentUser ? currentUser.id : null}
+                requesterName={currentUser ? currentUser.name : (guestName || 'Guest')}
               />
             </GlassCard>
           </Reveal>
+
+          {/* ---- Vibe Wall (optional) ---- */}
+          {event.vibe_wall_enabled !== false && (
+            <Reveal className="invite-section" variant="left">
+              <h2 className="invite-section__title">Vibe Wall</h2>
+              <GlassCard>
+                <VibeWall
+                  eventId={event.id}
+                  authorName={currentUser ? currentUser.name : guestName}
+                  authorId={currentUser ? currentUser.id : null}
+                  hostId={event.host_id}
+                  closesAt={event.vibe_wall_closes_at}
+                />
+              </GlassCard>
+            </Reveal>
+          )}
         </div>
 
         <div className="invite-body-col">
@@ -474,6 +625,19 @@ export default function GuestInvite() {
                     />
                   )}
 
+                  {!submitted && event.cover_charge > 0 && (
+                    <input
+                      className="invite-rsvp__input"
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="phone number (for payment verification)"
+                      value={guestPhone}
+                      onChange={(e) => setGuestPhone(e.target.value)}
+                      autoComplete="tel"
+                      aria-label="Phone number"
+                    />
+                  )}
+
                   {!submitted && availableCapacity > 1 && (
                     <div className="invite-ticket-counter" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', background: 'rgba(255,255,255,0.05)', padding: '12px 16px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--glass-border)' }}>
                       <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginRight: 'auto' }}>Number of tickets</span>
@@ -485,14 +649,54 @@ export default function GuestInvite() {
                     </div>
                   )}
 
+                  {!submitted && (
+                    <input
+                      className="invite-rsvp__input"
+                      type="text"
+                      placeholder="bringing a +1? (their name, optional)"
+                      value={plusOneName}
+                      onChange={(e) => setPlusOneName(e.target.value)}
+                      maxLength={60}
+                      aria-label="Plus one name (optional)"
+                    />
+                  )}
+
+                  {!submitted && isWaitlisted && (
+                    <p className="invite-waitlist-note">
+                      This party is at capacity — you'll join the waitlist and get notified if a spot opens.
+                    </p>
+                  )}
+
                   <button
                     className={`invite-rsvp__cta ${submitted ? 'invite-rsvp__cta--success' : ''}`}
                     onClick={handleRSVP}
-                    disabled={submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob) || Object.values(foodBreakdown).reduce((a, b) => a + b, 0) !== guestCount || Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) !== guestCount}
+                    disabled={submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob) || (event.cover_charge > 0 && !isWaitlisted && !guestPhone.trim()) || Object.values(foodBreakdown).reduce((a, b) => a + b, 0) !== guestCount || Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) !== guestCount}
                     type="button"
                   >
-                    {submitted ? '✓ Saved' : (isEditingRsvp ? 'Update RSVP' : 'Join Party')}
+                    {submitted ? '✓ Saved' : (isEditingRsvp ? 'Update RSVP' : (isWaitlisted ? 'Join Waitlist' : 'Join Party'))}
                   </button>
+
+                  {submitted && submittedRsvp && (
+                    submittedRsvp.status === 'waitlist' ? (
+                      <div className="invite-waitlist-badge">⏳ You're on the waitlist — we'll ping you if a spot frees up.</div>
+                    ) : (
+                      <div className="invite-ticket-wrap">
+                        <QRTicket event={event} rsvp={submittedRsvp} />
+                        {event.cover_charge > 0 && !submittedRsvp.cover_paid && (
+                          <button
+                            type="button"
+                            className="invite-payment-nudge-btn"
+                            onClick={() => {
+                              setPendingRsvp({ ...submittedRsvp, _additionalGuests: submittedRsvp.guest_count });
+                              setShowPaymentModal(true);
+                            }}
+                          >
+                            {submittedRsvp.payment_deadline_at ? 'Submit / resubmit payment' : 'Submit payment'}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  )}
                 </>
               )}
             </div>
@@ -529,6 +733,9 @@ export default function GuestInvite() {
         </div>
       )}
 
+      {/* ====== Party-member profile peek ====== */}
+      <ProfilePeek open={!!peek} person={peek} onClose={() => setPeek(null)} />
+
       {/* ====== Payment Checkout Modal ====== */}
       <PaymentModal
         isOpen={showPaymentModal}
@@ -540,7 +747,8 @@ export default function GuestInvite() {
         upiId={event.upi_id || 'lowkey@okaxis'}
         payeeName={event.host_name || 'LowKey Host'}
         note={`Entry Cover: ${event.name}`}
-        onPaymentSuccess={handlePaymentSuccess}
+        defaultPhone={guestPhone || currentUser?.phone || ''}
+        onPaymentSubmitted={handlePaymentSubmitted}
       />
     </div>
   );

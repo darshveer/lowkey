@@ -129,3 +129,17 @@ export function getOSMDirectionsUrl({ lat, lng, address } = {}) {
   }
   return `https://www.openstreetmap.org/search?query=${encodeURIComponent(address || '')}`;
 }
+
+/**
+ * Google Maps directions link to a destination. Prefers exact coordinates,
+ * falling back to an address query. Opens the native Google Maps app on mobile.
+ * @param {{ lat?: number, lng?: number, address?: string }} dest
+ * @returns {string}
+ */
+export function getGoogleDirectionsUrl({ lat, lng, address } = {}) {
+  const base = 'https://www.google.com/maps/dir/?api=1';
+  if (isFinite(lat) && isFinite(lng)) {
+    return `${base}&destination=${lat},${lng}`;
+  }
+  return `${base}&destination=${encodeURIComponent(address || '')}`;
+}

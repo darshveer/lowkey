@@ -3,7 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   getEvents,
   loginUser,
-  registerUser
+  registerUser,
+  getActivityFeed,
 } from '../utils/storage';
 import { DISCOVERY_CITIES } from '../data/mockData';
 import { formatDate, formatTime, formatINR } from '../utils/helpers';
@@ -24,6 +25,8 @@ function Home({
   const location = useLocation();
   const [events] = useState(() => getEvents());
   const [selectedCity, setSelectedCity] = useState('All');
+  const [search, setSearch] = useState('');
+  const [priceFilter, setPriceFilter] = useState('all'); // all | free | paid
   
   // Sync tab transitions from other pages
   useEffect(() => {
@@ -56,11 +59,24 @@ function Home({
   const [signupPhone, setSignupPhone] = useState('');
 
   const discoverableEvents = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return events
       .filter(event => event.discoverable !== false)
       .filter(event => selectedCity === 'All' || event.city === selectedCity)
+      .filter(event => priceFilter === 'all'
+        || (priceFilter === 'free' && !event.cover_charge)
+        || (priceFilter === 'paid' && event.cover_charge > 0))
+      .filter(event => !q
+        || event.name?.toLowerCase().includes(q)
+        || event.location_name?.toLowerCase().includes(q)
+        || (event.vibe_tags || []).some(t => t.toLowerCase().includes(q)))
       .sort((a, b) => new Date(`${a.date}T${a.time_start || '00:00'}`) - new Date(`${b.date}T${b.time_start || '00:00'}`));
-  }, [events, selectedCity]);
+  }, [events, selectedCity, search, priceFilter]);
+
+  const activityFeed = useMemo(
+    () => (currentUser ? getActivityFeed(currentUser.id) : []),
+    [currentUser]
+  );
 
   // Find user's hosted parties
   const hostedEvents = useMemo(() => {
@@ -203,12 +219,53 @@ function Home({
             </div>
           </section>
 
+          {/* Activity feed — from hosts you follow */}
+          {currentUser && activityFeed.length > 0 && (
+            <section className="home-activity animate-fade-in-up">
+              <h3 className="home-section-title">From hosts you follow</h3>
+              <div className="home-activity__scroll">
+                {activityFeed.map(event => (
+                  <Link key={event.id} to={`/invite/${event.id}`} className="home-activity__card glass pressable">
+                    <span className="home-activity__host">{event.host_name}</span>
+                    <span className="home-activity__name">{event.name}</span>
+                    <span className="home-activity__meta">{formatDate(event.date)} · {event.city || 'India'}</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Discover Listing */}
           <section id="discover" className="home-discover animate-fade-in-up" style={{ animationDelay: '180ms' }}>
             <div className="home-section-row">
               <h3 className="home-section-title">discover parties</h3>
               <span className="home-section-chip">India Beta</span>
             </div>
+
+            {/* Search + price filter */}
+            <div className="home-search-row">
+              <input
+                className="home-search-input"
+                type="search"
+                placeholder="🔍 search parties, vibes, spots…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search parties"
+              />
+              <div className="home-price-filter">
+                {[['all', 'All'], ['free', 'Free'], ['paid', 'Paid']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`home-price-chip${priceFilter === val ? ' active' : ''}`}
+                    onClick={() => setPriceFilter(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="home-city-tabs" aria-label="Filter parties by city">
               {DISCOVERY_CITIES.map(city => (
                 <button

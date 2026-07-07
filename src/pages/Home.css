@@ -735,3 +735,74 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ---- Search + price filter ---- */
+.home-search-row {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+.home-search-input {
+  flex: 1;
+  min-width: 180px;
+  padding: var(--space-sm) var(--space-md);
+  min-height: 44px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+}
+.home-price-filter {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+}
+.home-price-chip {
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.home-price-chip.active {
+  background: var(--gradient-primary);
+  color: #fff;
+}
+
+/* ---- Activity feed ---- */
+.home-activity { margin-bottom: var(--space-xl); }
+.home-activity__scroll {
+  display: flex;
+  gap: var(--space-md);
+  overflow-x: auto;
+  padding-bottom: var(--space-sm);
+}
+.home-activity__card {
+  flex-shrink: 0;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+}
+.home-activity__host {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--neon-purple);
+}
+.home-activity__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.home-activity__meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}

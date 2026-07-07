@@ -27,6 +27,25 @@
   position: relative;
 }
 
+/* Clickable avatars (profile peek) keep the circle look as a button */
+.avatar-stack__circle--clickable {
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.avatar-stack__circle--clickable:hover {
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-stack__circle--clickable,
+  .avatar-stack__circle--clickable:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* Overlap — pull subsequent avatars left */
 .avatar-stack__circle + .avatar-stack__circle,
 .avatar-stack__circle + .avatar-stack__overflow {

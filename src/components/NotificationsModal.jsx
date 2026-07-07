@@ -8,6 +8,10 @@ const TYPE_ICON = {
   photo: '📸',
   achievement: '🏆',
   reminder: '⏰',
+  announcement: '📣',
+  song: '🎵',
+  start: '🎉',
+  waitlist: '🎉',
 };
 
 function timeAgo(iso) {

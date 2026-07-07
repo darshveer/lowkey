@@ -1,0 +1,116 @@
+.peek-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+}
+
+.peek-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.peek-card {
+  position: relative;
+  width: min(92vw, 300px);
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  border-radius: var(--radius-lg);
+  text-align: center;
+
+  /* Solid liquid-glass panel — matches NotificationsModal / ConfirmDialog */
+  background:
+    linear-gradient(180deg, rgba(34, 34, 46, 0.94) 0%, rgba(18, 18, 26, 0.96) 100%);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.32),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.peek-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.10) 0%,
+    rgba(255, 255, 255, 0) 22%
+  );
+  z-index: 0;
+}
+
+.peek-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .peek-card {
+    background: rgba(18, 18, 26, 0.98);
+  }
+}
+
+.peek-card__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.peek-card__close:hover {
+  color: var(--text-primary);
+  background: var(--glass-bg-strong);
+}
+
+.peek-card__pic,
+.peek-card__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: #fff;
+  object-fit: cover;
+  border: 2px solid var(--glass-border-strong);
+}
+
+.peek-card__name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.peek-card__username {
+  font-size: var(--text-sm);
+  color: var(--neon-purple);
+  margin-top: 2px;
+}
+
+.peek-card__meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-sm);
+}

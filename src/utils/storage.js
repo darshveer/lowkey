@@ -3,10 +3,15 @@
  * Provides typed get/set with JSON serialization and background Supabase persistence
  */
 import { supabase } from './supabase';
-import { generateId } from './helpers';
+import { generateId, computePaymentDeadline } from './helpers';
 
 const STORAGE_PREFIX = 'lowkey_';
 const PHOTO_BUCKET = 'party-photos';
+
+/** Hours a waitlist-promoted guest gets to pay — tighter, since a spot was freed for them. */
+const PROMOTED_PAYMENT_DEADLINE_HOURS = 1;
+/** How far ahead of a deadline the one-time payment reminder fires. */
+const PAYMENT_REMINDER_LEAD_HOURS = 2;
 
 /**
  * Save data to localStorage
@@ -46,6 +51,20 @@ export function remove(key) {
 }
 
 /**
+ * Report a failed Supabase write. Logs it AND broadcasts an event so the UI can
+ * surface it (a silent console.warn hid schema/connection problems before).
+ * @param {string} context - human label, e.g. 'saving your party'
+ * @param {Object} error - the Supabase error
+ */
+function reportSyncError(context, error) {
+  const message = error?.message || String(error);
+  console.warn(`Supabase write failed (${context}):`, message);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('lowkey_sync_error', { detail: { context, message } }));
+  }
+}
+
+/**
  * Get all events from storage
  * @returns {Array} Array of event objects
  */
@@ -77,7 +96,7 @@ export function saveEvent(event) {
 
   // Background write to Supabase
   supabase.from('events').upsert(updatedEvent).then(({ error }) => {
-    if (error) console.warn('Supabase saveEvent failed, using offline cache:', error.message);
+    if (error) reportSyncError('saving your party', error);
   });
 }
 
@@ -112,7 +131,7 @@ export function addRSVP(rsvp) {
 
   // Background write to Supabase
   supabase.from('rsvps').insert(newRsvp).then(({ error }) => {
-    if (error) console.warn('Supabase addRSVP failed, using offline cache:', error.message);
+    if (error) reportSyncError('saving RSVP', error);
   });
 
   // Notify the host of the new RSVP
@@ -120,7 +139,7 @@ export function addRSVP(rsvp) {
     const ev = getEvent(newRsvp.event_id);
     notifyHost(newRsvp.event_id, newRsvp.user_id, {
       type: 'rsvp',
-      title: 'New RSVP 🎉',
+      title: 'New RSVP',
       body: `${newRsvp.guest_name} is coming${ev ? ` to ${ev.name}` : ''}${newRsvp.guest_count > 1 ? ` (+${newRsvp.guest_count - 1})` : ''}`,
     });
   }
@@ -140,7 +159,7 @@ export function updateRSVP(rsvpId, updates) {
 
     // Background write to Supabase
     supabase.from('rsvps').update(updates).eq('id', rsvpId).then(({ error }) => {
-      if (error) console.warn('Supabase updateRSVP failed:', error.message);
+      if (error) reportSyncError('updating RSVP', error);
     });
   }
 }
@@ -182,7 +201,7 @@ export function addExpense(expense) {
 
   // Background write to Supabase
   supabase.from('expenses').insert(newExpense).then(({ error }) => {
-    if (error) console.warn('Supabase addExpense failed, using offline cache:', error.message);
+    if (error) reportSyncError('saving expense', error);
   });
 }
 
@@ -268,13 +287,13 @@ export function addPhoto(photo) {
 
   // Background write to Supabase
   supabase.from('photos').insert(newPhoto).then(({ error }) => {
-    if (error) console.warn('Supabase addPhoto failed, using offline cache:', error.message);
+    if (error) reportSyncError('saving photo', error);
   });
 
   // Notify the host of the new photo
   notifyHost(newPhoto.event_id, newPhoto.uploaded_by_id, {
     type: 'photo',
-    title: 'New photo dropped 📸',
+    title: 'New photo dropped',
     body: `${newPhoto.uploaded_by || 'A guest'} added to the camera dump`,
   });
 }
@@ -290,26 +309,71 @@ export function getPayments(eventId) {
 }
 
 /**
- * Add a payment record
+ * Add a payment record. Status starts 'pending' — a UTR submission is proof
+ * of an attempted payment, not a verified one. The host (or a co-host)
+ * approves or declines it via updatePayment().
  * @param {Object} payment
  */
 export function addPayment(payment) {
   const all = load('payments', []);
-  const newPayment = { ...payment, created_at: new Date().toISOString() };
+  const newPayment = { status: 'pending', ...payment, created_at: new Date().toISOString() };
   all.push(newPayment);
   save('payments', all);
 
   // Background write to Supabase
   supabase.from('payments').insert(newPayment).then(({ error }) => {
-    if (error) console.warn('Supabase addPayment failed, using offline cache:', error.message);
+    if (error) reportSyncError('saving payment', error);
   });
 
-  // Notify the host of the payment
+  // Notify the host a payment is awaiting their review
   notifyHost(newPayment.event_id, null, {
     type: 'payment',
-    title: 'Payment received 💸',
-    body: `${newPayment.paid_by || 'A guest'} paid ₹${Number(newPayment.amount || 0).toLocaleString('en-IN')}`,
+    title: 'Payment awaiting approval',
+    body: `${newPayment.paid_by || 'A guest'} submitted a UTR for ₹${Number(newPayment.amount || 0).toLocaleString('en-IN')}`,
   });
+}
+
+/**
+ * Approve or decline a submitted payment. For a cover-charge payment
+ * (rsvp_id set), this flips the linked RSVP's cover_paid flag — which,
+ * together with the 1-day-out window, gates that guest's entry QR — and
+ * notifies them of the outcome. Kitty-split payments (rsvp_id null) just
+ * update status; the host settles those via the existing "Mark paid" toggle.
+ * @param {string} paymentId
+ * @param {'pending'|'approved'|'declined'} status
+ */
+export function updatePayment(paymentId, status) {
+  const all = load('payments', []);
+  const idx = all.findIndex(p => p.id === paymentId);
+  if (idx < 0) return null;
+  const updated = { ...all[idx], status };
+  all[idx] = updated;
+  save('payments', all);
+
+  supabase.from('payments').update({ status }).eq('id', paymentId).then(({ error }) => {
+    if (error) reportSyncError('updating payment', error);
+  });
+
+  if (updated.rsvp_id && (status === 'approved' || status === 'declined')) {
+    const approved = status === 'approved';
+    updateRSVP(updated.rsvp_id, { cover_paid: approved });
+    const rsvp = load('rsvps', []).find(r => r.id === updated.rsvp_id);
+    if (rsvp?.user_id) {
+      addNotification({
+        recipient_id: rsvp.user_id,
+        event_id: updated.event_id,
+        type: 'payment',
+        title: approved ? 'Payment approved' : 'Payment needs another look',
+        body: approved
+          ? "Your host approved your payment — your entry QR unlocks closer to the party."
+          : "Your host couldn't verify that payment. Please resubmit your UTR.",
+        link: `/invite/${updated.event_id}`,
+      });
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  return updated;
 }
 
 // ============================================================
@@ -336,16 +400,42 @@ export function addComment(comment) {
   save('comments', all);
 
   supabase.from('comments').insert(newComment).then(({ error }) => {
-    if (error) console.warn('Supabase addComment failed, using offline cache:', error.message);
+    if (error) reportSyncError('posting to the vibe wall', error);
   });
 
   // Notify the host of the new vibe-wall post
   notifyHost(newComment.event_id, newComment.author_id, {
     type: 'comment',
-    title: 'New vibe wall post 💬',
+    title: 'New vibe wall post',
     body: `${newComment.author_name || 'Someone'}: ${String(newComment.body || '').slice(0, 60)}`,
   });
   return newComment;
+}
+
+/**
+ * Remove a comment from the local cache only. Used to reconcile realtime
+ * DELETE events so a post removed elsewhere doesn't resurrect from
+ * localStorage on the next page load (the sync merge never removes rows).
+ */
+export function removeLocalComment(commentId) {
+  const all = load('comments', []);
+  if (all.some(c => c.id === commentId)) {
+    save('comments', all.filter(c => c.id !== commentId));
+  }
+}
+
+/**
+ * Delete a vibe-wall comment (author removing their own post, or the host
+ * moderating the wall). Cloud enforcement lives in RLS (migration 0011):
+ * only the comment's author or the event's host can delete the row.
+ */
+export function deleteComment(commentId) {
+  removeLocalComment(commentId);
+
+  supabase.from('comments').delete().eq('id', commentId).then(({ error }) => {
+    if (error) reportSyncError('deleting the post', error);
+  });
+  window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
 }
 
 // ============================================================
@@ -365,7 +455,7 @@ let channelSeq = 0;
  */
 export function subscribeToEvent(eventId, handlers = {}) {
   const channel = supabase.channel(`event:${eventId}:${++channelSeq}`);
-  const tables = { rsvps: handlers.onRsvp, photos: handlers.onPhoto, comments: handlers.onComment };
+  const tables = { rsvps: handlers.onRsvp, photos: handlers.onPhoto, comments: handlers.onComment, payments: handlers.onPayment };
 
   Object.entries(tables).forEach(([table, handler]) => {
     if (!handler) return;
@@ -464,6 +554,332 @@ function notifyHost(eventId, actorId, payload) {
   if (!ev || !ev.host_id) return;
   if (actorId && ev.host_id === actorId) return;
   addNotification({ recipient_id: ev.host_id, event_id: eventId, link: `/party/${eventId}`, ...payload });
+}
+
+// ============================================================
+//  Announcements — host broadcast to all "going" guests
+// ============================================================
+
+export function getAnnouncements(eventId) {
+  return load('announcements', [])
+    .filter(a => a.event_id === eventId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+export function addAnnouncement({ event_id, body, author_name }) {
+  const all = load('announcements', []);
+  const ann = {
+    id: `ann_${generateId()}`,
+    event_id,
+    body: String(body || '').trim(),
+    author_name: author_name || 'Host',
+    created_at: new Date().toISOString(),
+  };
+  all.push(ann);
+  save('announcements', all);
+  supabase.from('announcements').insert(ann).then(({ error }) => {
+    if (error) reportSyncError('sending announcement', error);
+  });
+
+  // Push a notification to every going guest with an account.
+  const ev = getEvent(event_id);
+  getRSVPs(event_id)
+    .filter(r => r.status === 'going' && r.user_id && (!ev || r.user_id !== ev.host_id))
+    .forEach(r => addNotification({
+      recipient_id: r.user_id,
+      event_id,
+      type: 'announcement',
+      title: `${ev?.name || 'Party'} update`,
+      body: ann.body,
+      link: `/invite/${event_id}`,
+    }));
+  return ann;
+}
+
+// ============================================================
+//  Song requests — collaborative playlist queue
+// ============================================================
+
+export function getSongRequests(eventId) {
+  return load('song_requests', [])
+    .filter(s => s.event_id === eventId)
+    .sort((a, b) => (b.votes || 0) - (a.votes || 0) || new Date(a.created_at) - new Date(b.created_at));
+}
+
+export function addSongRequest({ event_id, title, requested_by }) {
+  const all = load('song_requests', []);
+  const song = {
+    id: `song_${generateId()}`,
+    event_id,
+    title: String(title || '').trim(),
+    requested_by: requested_by || 'Guest',
+    votes: 1,
+    created_at: new Date().toISOString(),
+  };
+  all.push(song);
+  save('song_requests', all);
+  supabase.from('song_requests').insert(song).then(({ error }) => {
+    if (error) console.warn('addSongRequest failed:', error.message);
+  });
+  notifyHost(event_id, null, {
+    type: 'song',
+    title: 'New song request',
+    body: `${song.requested_by} added "${song.title}"`,
+  });
+  return song;
+}
+
+export function voteSongRequest(songId) {
+  const all = load('song_requests', []);
+  const idx = all.findIndex(s => s.id === songId);
+  if (idx < 0) return null;
+  all[idx] = { ...all[idx], votes: (all[idx].votes || 0) + 1 };
+  save('song_requests', all);
+  supabase.from('song_requests').update({ votes: all[idx].votes }).eq('id', songId)
+    .then(({ error }) => { if (error) console.warn('voteSongRequest failed:', error.message); });
+  return all[idx];
+}
+
+// ============================================================
+//  Profiles — synced public profile lookups (party-member peeks)
+// ============================================================
+
+/** A synced profile by auth user id (from the local cache pulled on sync). */
+export function getProfile(userId) {
+  if (!userId) return null;
+  return load('users', []).find(u => u.id === userId) || null;
+}
+
+/** A synced profile by email, case-insensitive. Used for co-host lookup. */
+export function findProfileByEmail(email) {
+  const q = String(email || '').trim().toLowerCase();
+  if (!q) return null;
+  return load('users', []).find(u => (u.email || '').toLowerCase() === q) || null;
+}
+
+// ============================================================
+//  Follows + activity feed
+// ============================================================
+
+export function getFollowing(userId) {
+  return load('follows', []).filter(f => f.follower_id === userId).map(f => f.host_id);
+}
+
+export function isFollowing(userId, hostId) {
+  return load('follows', []).some(f => f.follower_id === userId && f.host_id === hostId);
+}
+
+/** Follow / unfollow a host. Returns the new following state. */
+export function toggleFollow(userId, hostId) {
+  if (!userId || !hostId || userId === hostId) return false;
+  const all = load('follows', []);
+  const exists = all.find(f => f.follower_id === userId && f.host_id === hostId);
+  let following;
+  if (exists) {
+    save('follows', all.filter(f => !(f.follower_id === userId && f.host_id === hostId)));
+    supabase.from('follows').delete().eq('follower_id', userId).eq('host_id', hostId).then(() => {});
+    following = false;
+  } else {
+    const row = { id: `flw_${generateId()}`, follower_id: userId, host_id: hostId, created_at: new Date().toISOString() };
+    all.push(row);
+    save('follows', all);
+    supabase.from('follows').insert(row).then(() => {});
+    following = true;
+  }
+  window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  return following;
+}
+
+/** Upcoming discoverable events hosted by people the user follows. */
+export function getActivityFeed(userId) {
+  if (!userId) return [];
+  const followed = new Set(getFollowing(userId));
+  const today = new Date().toISOString().split('T')[0];
+  return getEvents()
+    .filter(e => followed.has(e.host_id) && e.date >= today && e.discoverable !== false)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+// ============================================================
+//  Duplicate a party (template)
+// ============================================================
+
+export function duplicateEvent(eventId, hostUser) {
+  const ev = getEvent(eventId);
+  if (!ev) return null;
+  const copy = {
+    ...ev,
+    id: generateId(),
+    name: `${ev.name} (copy)`,
+    host_id: hostUser?.id || ev.host_id,
+    host_name: hostUser?.name || ev.host_name,
+    date: '',
+    time_start: '',
+    time_end: '',
+    status: 'live',
+    photo_dump_unlocked: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  saveEvent(copy);
+  return copy;
+}
+
+// ============================================================
+//  Waitlist
+// ============================================================
+
+/** Seats currently taken by "going" RSVPs. */
+export function goingCountFor(eventId) {
+  return getRSVPs(eventId)
+    .filter(r => r.status === 'going')
+    .reduce((sum, r) => sum + (r.guest_count || 1), 0);
+}
+
+// ============================================================
+//  Party lifecycle — start / archive / delete
+// ============================================================
+
+/** Host starts the party — activates guest entry QRs and pings going guests. */
+export function startEvent(eventId) {
+  const ev = getEvent(eventId);
+  if (!ev) return null;
+  const updated = { ...ev, started: true, started_at: new Date().toISOString() };
+  saveEvent(updated);
+  getRSVPs(eventId)
+    .filter(r => r.status === 'going' && r.user_id && r.user_id !== ev.host_id)
+    .forEach(r => addNotification({
+      recipient_id: r.user_id,
+      event_id: eventId,
+      type: 'start',
+      title: `${ev.name} has started!`,
+      body: 'The party has started — check your entry pass.',
+      link: `/invite/${eventId}`,
+    }));
+  return updated;
+}
+
+/** Archive a finished party (hidden from discovery; kept for the record). */
+export function archiveEvent(eventId) {
+  const ev = getEvent(eventId);
+  if (!ev) return null;
+  const updated = { ...ev, archived: true, discoverable: false };
+  saveEvent(updated);
+  return updated;
+}
+
+/** Delete a party and all of its related rows (local + Supabase). */
+export function deleteEvent(eventId) {
+  save('events', getEvents().filter(e => e.id !== eventId));
+  const childKeys = ['rsvps', 'expenses', 'photos', 'comments', 'song_requests', 'announcements'];
+  childKeys.forEach(key => save(key, load(key, []).filter(x => x.event_id !== eventId)));
+
+  supabase.from('events').delete().eq('id', eventId).then(({ error }) => {
+    if (error) console.warn('deleteEvent (events) failed:', error.message);
+  });
+  childKeys.forEach(table =>
+    supabase.from(table).delete().eq('event_id', eventId).then(() => {})
+  );
+  window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+}
+
+/** Promote the earliest waitlisted RSVP to "going" if capacity allows. */
+export function promoteWaitlist(eventId) {
+  const ev = getEvent(eventId);
+  if (!ev || !ev.capacity) return;
+  const free = ev.capacity - goingCountFor(eventId);
+  if (free <= 0) return;
+  const next = getRSVPs(eventId)
+    .filter(r => r.status === 'waitlist' && (r.guest_count || 1) <= free)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+  if (!next) return;
+
+  // A promoted guest gets a much tighter payment window — the spot was just
+  // freed up, so it shouldn't sit reserved-but-unpaid as long as a fresh RSVP.
+  const needsPayment = Number(ev.cover_charge) > 0;
+  const updates = { status: 'going' };
+  if (needsPayment) {
+    updates.payment_deadline_at = computePaymentDeadline(PROMOTED_PAYMENT_DEADLINE_HOURS);
+    updates.payment_reminder_sent = false;
+    updates.cover_paid = false;
+  }
+  updateRSVP(next.id, updates);
+
+  if (next.user_id) {
+    addNotification({
+      recipient_id: next.user_id,
+      event_id: eventId,
+      type: 'waitlist',
+      title: "You're off the waitlist!",
+      body: needsPayment
+        ? `A spot opened up at ${ev.name} — pay within 1 hour to keep it.`
+        : `A spot opened up at ${ev.name} — you're in.`,
+      link: `/invite/${eventId}`,
+    });
+  }
+}
+
+/**
+ * Client-side lazy sweep for a single event: expires 'going' RSVPs whose
+ * payment deadline has passed without an approved payment (freeing the spot
+ * for the next waitlisted guest), and sends a one-time reminder as a
+ * deadline approaches. There is no background job in this architecture, so
+ * this runs whenever a page that cares (the invite page, the dashboard)
+ * mounts — same lazy-on-read idea as getPhotos' expiry purge, just exposed
+ * explicitly rather than embedded in a getter, since this one can cascade
+ * into a waitlist promotion and mustn't recurse into itself.
+ * @param {string} eventId
+ */
+export function checkPaymentDeadlines(eventId) {
+  try {
+    const nowMs = Date.now();
+    const forEvent = load('rsvps', []).filter(r => r.event_id === eventId && r.status === 'going' && r.payment_deadline_at);
+
+    const toExpire = [];
+    const toRemind = [];
+    forEvent.forEach(r => {
+      if (r.cover_paid) return;
+      const deadlineMs = new Date(r.payment_deadline_at).getTime();
+      if (deadlineMs < nowMs) {
+        toExpire.push(r);
+      } else if (!r.payment_reminder_sent && (deadlineMs - nowMs) / 3600000 <= PAYMENT_REMINDER_LEAD_HOURS) {
+        toRemind.push(r);
+      }
+    });
+
+    toRemind.forEach(r => {
+      updateRSVP(r.id, { payment_reminder_sent: true });
+      if (r.user_id) {
+        const hoursLeft = Math.max(1, Math.round((new Date(r.payment_deadline_at).getTime() - nowMs) / 3600000));
+        addNotification({
+          recipient_id: r.user_id,
+          event_id: eventId,
+          type: 'payment',
+          title: 'Payment reminder',
+          body: `Submit your UTR within ${hoursLeft}h to keep your spot.`,
+          link: `/invite/${eventId}`,
+        });
+      }
+    });
+
+    toExpire.forEach(r => {
+      deleteRSVP(r.id);
+      if (r.user_id) {
+        addNotification({
+          recipient_id: r.user_id,
+          event_id: eventId,
+          type: 'payment',
+          title: 'Spot released',
+          body: "Your RSVP was removed — payment wasn't confirmed in time. RSVP again if there's room.",
+          link: `/invite/${eventId}`,
+        });
+      }
+    });
+
+    if (toExpire.length > 0) promoteWaitlist(eventId);
+  } catch (e) {
+    console.warn('checkPaymentDeadlines failed:', e);
+  }
 }
 
 // ============================================================
@@ -691,9 +1107,67 @@ export async function syncWithSupabase() {
       window.dispatchEvent(new CustomEvent('lowkey_notifications'));
     }
 
+    // 9-11. Sync announcements / song requests / follows
+    const extras = [
+      ['announcements', 'announcements'],
+      ['song_requests', 'song_requests'],
+      ['follows', 'follows'],
+    ];
+    for (const [table, key] of extras) {
+      const { data, error } = await supabase.from(table).select('*');
+      if (!error && data) save(key, mergeById(load(key, []), data));
+    }
+
     // Broadcast change to active views
     window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
   } catch (e) {
     console.warn('Supabase sync database offline fallback:', e);
   }
+}
+
+/**
+ * Manually re-push the current user's locally-cached data to Supabase, then
+ * pull the latest. Recovery tool for when background writes previously failed
+ * (e.g. a schema mismatch). Only pushes rows the signed-in user owns so RLS
+ * doesn't reject them, and returns the first real error for diagnosis.
+ * @returns {Promise<{ pushed: number, failed: number, firstError: string|null, needsAuth: boolean }>}
+ */
+export async function resyncToCloud() {
+  const me = getCurrentUser();
+  const myId = me?.id;
+  if (!myId) {
+    return { pushed: 0, failed: 0, firstError: 'You must be signed in to re-sync.', needsAuth: true };
+  }
+
+  let pushed = 0;
+  let failed = 0;
+  let firstError = null;
+
+  const push = async (key, table, rows) => {
+    for (const row of rows) {
+      const { error } = await supabase.from(table).upsert(row);
+      if (error) {
+        failed++;
+        if (!firstError) firstError = `${table}: ${error.message}`;
+      } else {
+        pushed++;
+      }
+    }
+  };
+
+  // My hosted events + everything that belongs to them (host-writable), plus my
+  // own RSVPs. Rows owned by other people are intentionally skipped (RLS).
+  const myEvents = load('events', []).filter(e => e.host_id === myId);
+  const myEventIds = new Set(myEvents.map(e => e.id));
+  const childrenOfMine = (key) => load(key, []).filter(r => myEventIds.has(r.event_id));
+
+  await push('events', 'events', myEvents);
+  await push('rsvps', 'rsvps', load('rsvps', []).filter(r => r.user_id === myId));
+  await push('expenses', 'expenses', childrenOfMine('expenses'));
+  await push('photos', 'photos', childrenOfMine('photos'));
+  await push('comments', 'comments', childrenOfMine('comments'));
+  await push('announcements', 'announcements', childrenOfMine('announcements'));
+
+  await syncWithSupabase();
+  return { pushed, failed, firstError, needsAuth: false };
 }
