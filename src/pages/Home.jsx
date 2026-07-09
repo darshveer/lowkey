@@ -4,14 +4,19 @@ import {
   getEvents,
   loginUser,
   registerUser,
+  signInWithGoogle,
   getActivityFeed,
 } from '../utils/storage';
 import { DISCOVERY_CITIES } from '../data/mockData';
-import { formatDate, formatTime, formatINR } from '../utils/helpers';
+import { formatDate, formatTime, formatINR, digitsOnly, isTenDigitPhone } from '../utils/helpers';
+import { useTransition } from '../hooks/useTransition';
 import SvgDecor from '../components/SvgDecor';
 import Reveal from '../components/Reveal';
 import Logo from '../components/Logo';
+import TurnstileWidget from '../components/TurnstileWidget';
 import './Home.css';
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
 
 function Home({
   currentUser,
@@ -23,6 +28,7 @@ function Home({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { playTransition } = useTransition();
   const [events] = useState(() => getEvents());
   const [selectedCity, setSelectedCity] = useState('All');
   const [search, setSearch] = useState('');
@@ -45,6 +51,13 @@ function Home({
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  // Cloudflare Turnstile: token feeds Supabase auth calls; bump the nonce to force
+  // a fresh widget (single-use token) after a failed attempt.
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const captchaRequired = !!TURNSTILE_SITE_KEY;
+  const resetCaptcha = () => { setCaptchaToken(''); setCaptchaNonce((n) => n + 1); };
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
@@ -105,19 +118,34 @@ function Home({
     setAuthNotice('');
     setAuthSubmitting(true);
     try {
-      const res = await loginUser(loginUsername, loginPassword);
+      const res = await loginUser(loginUsername, loginPassword, captchaToken || undefined);
       if (res.success) {
-        setCurrentUser(res.user);
-        if (loginRedirect) {
-          setLoginRedirect(false);
-          navigate('/create');
-        } else {
-          setActiveTab('discover');
-        }
+        await playTransition(() => {
+          setCurrentUser(res.user);
+          if (loginRedirect) {
+            setLoginRedirect(false);
+            navigate('/create');
+          } else {
+            setActiveTab('discover');
+          }
+        });
       } else {
         setAuthError(res.error);
+        resetCaptcha();
       }
     } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthError('');
+    setAuthNotice('');
+    setAuthSubmitting(true);
+    // On success the browser redirects to Google, so we only land here on error.
+    const res = await signInWithGoogle();
+    if (!res.success) {
+      setAuthError(res.error || "Couldn't start Google sign-in. Please try again.");
       setAuthSubmitting(false);
     }
   };
@@ -128,6 +156,10 @@ function Home({
     setAuthNotice('');
     if (!signupUsername || !signupEmail || !signupName || !signupPassword || !signupDob) {
       setAuthError('Please fill in all required fields.');
+      return;
+    }
+    if (signupPhone && !isTenDigitPhone(signupPhone)) {
+      setAuthError('Please enter a valid 10-digit phone number (or leave it blank).');
       return;
     }
 
@@ -142,24 +174,28 @@ function Home({
 
     setAuthSubmitting(true);
     try {
-      const res = await registerUser(newUser);
+      const res = await registerUser(newUser, captchaToken || undefined);
       if (!res.success) {
         setAuthError(res.error);
+        resetCaptcha();
         return;
       }
       if (res.needsConfirmation) {
         // Email confirmation is enabled on the Supabase project.
         setAuthNotice('Almost there! Check your email to confirm your account, then log in.');
         setIsSignUp(false);
+        resetCaptcha();
         return;
       }
-      setCurrentUser(res.user);
-      if (loginRedirect) {
-        setLoginRedirect(false);
-        navigate('/create');
-      } else {
-        setActiveTab('discover');
-      }
+      await playTransition(() => {
+        setCurrentUser(res.user);
+        if (loginRedirect) {
+          setLoginRedirect(false);
+          navigate('/create');
+        } else {
+          setActiveTab('discover');
+        }
+      });
     } finally {
       setAuthSubmitting(false);
     }
@@ -401,6 +437,23 @@ function Home({
             {authError && <div className="auth-error" role="alert">{authError}</div>}
             {authNotice && <div className="auth-notice" role="status">{authNotice}</div>}
 
+            <button
+              type="button"
+              className="auth-google-btn"
+              onClick={handleGoogleSignIn}
+              disabled={authSubmitting}
+            >
+              <svg className="auth-google-btn__icon" viewBox="0 0 18 18" aria-hidden="true">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" />
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" />
+                <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" />
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z" />
+              </svg>
+              {isSignUp ? 'Sign up with Google' : 'Continue with Google'}
+            </button>
+
+            <div className="auth-divider"><span>or</span></div>
+
             {isSignUp ? (
               <form onSubmit={handleRegisterSubmit} className="auth-form">
                 <div className="form-group">
@@ -444,10 +497,12 @@ function Home({
                   <input
                     id="signup-phone"
                     type="tel"
-                    placeholder="+919876543210"
+                    inputMode="numeric"
+                    placeholder="10-digit mobile number"
                     value={signupPhone}
-                    onChange={(e) => setSignupPhone(e.target.value)}
+                    onChange={(e) => setSignupPhone(digitsOnly(e.target.value).slice(0, 10))}
                     autoComplete="tel"
+                    maxLength={10}
                   />
                 </div>
                 <div className="form-group">
@@ -473,7 +528,16 @@ function Home({
                     autoComplete="new-password"
                   />
                 </div>
-                <button type="submit" className="auth-submit-btn" disabled={authSubmitting}>
+                <TurnstileWidget
+                  key={`signup-${captchaNonce}`}
+                  siteKey={TURNSTILE_SITE_KEY}
+                  onVerify={(t) => setCaptchaToken(t || '')}
+                />
+                <button
+                  type="submit"
+                  className="auth-submit-btn"
+                  disabled={authSubmitting || (captchaRequired && !captchaToken)}
+                >
                   {authSubmitting ? 'Creating account…' : 'Sign Up'}
                 </button>
               </form>
@@ -503,7 +567,16 @@ function Home({
                     autoComplete="current-password"
                   />
                 </div>
-                <button type="submit" className="auth-submit-btn" disabled={authSubmitting}>
+                <TurnstileWidget
+                  key={`login-${captchaNonce}`}
+                  siteKey={TURNSTILE_SITE_KEY}
+                  onVerify={(t) => setCaptchaToken(t || '')}
+                />
+                <button
+                  type="submit"
+                  className="auth-submit-btn"
+                  disabled={authSubmitting || (captchaRequired && !captchaToken)}
+                >
                   {authSubmitting ? 'Logging in…' : 'Log In'}
                 </button>
               </form>

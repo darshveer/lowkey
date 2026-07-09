@@ -13,7 +13,7 @@ import SongRequestQueue from '../components/SongRequestQueue';
 import AnnouncementsPanel from '../components/AnnouncementsPanel';
 import QRTicket from '../components/QRTicket';
 import { getEvent, getRSVPs, addRSVP, updateRSVP, addPayment, getCurrentUser, toggleFollow, isFollowing, getProfile, subscribeToEvent, checkPaymentDeadlines } from '../utils/storage';
-import { generateId, formatDate, formatTime, getInitials, getAvatarGradient, safeUrl, computePaymentDeadline } from '../utils/helpers';
+import { generateId, formatDate, formatTime, getInitials, getAvatarGradient, safeUrl, computePaymentDeadline, isPartyManager, digitsOnly, isTenDigitPhone, isEventOver } from '../utils/helpers';
 import PaymentModal from '../components/PaymentModal';
 import { useToast } from '../hooks/useToast';
 import './GuestInvite.css';
@@ -68,16 +68,31 @@ export default function GuestInvite() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingRsvp, setPendingRsvp] = useState(null);
+  // Whether the guest has actually submitted a UTR (vs. just having an unpaid RSVP).
+  // Drives the entry-pass copy so a reloaded/abandoned checkout never reads as "paid".
+  const [paymentSubmitted, setPaymentSubmitted] = useState(false);
 
   const existingRsvp = currentUser ? rsvps.find(r => r.user_id === currentUser.id) : null;
   const isEditingRsvp = !!existingRsvp;
 
   // Tint the ambient FX (cursor glow + background) to match this party's theme.
+  // A 'custom' theme carries a host-picked gradient — apply it as inline FX vars.
+  const customFrom = event?.theme === 'custom' ? event?.custom_gradient?.from : null;
+  const customTo = event?.theme === 'custom' ? event?.custom_gradient?.to : null;
   useEffect(() => {
-    const theme = event?.theme || 'neon';
-    document.documentElement.setAttribute('data-party-theme', theme);
-    return () => document.documentElement.removeAttribute('data-party-theme');
-  }, [event?.theme]);
+    const root = document.documentElement;
+    root.setAttribute('data-party-theme', event?.theme || 'neon');
+    if (customFrom && customTo) {
+      root.style.setProperty('--fx-accent-1', customFrom);
+      root.style.setProperty('--fx-accent-2', customTo);
+      root.style.setProperty('--fx-accent-3', customFrom);
+      root.style.setProperty('--fx-accent-ring', customTo);
+    }
+    return () => {
+      root.removeAttribute('data-party-theme');
+      ['--fx-accent-1', '--fx-accent-2', '--fx-accent-3', '--fx-accent-ring'].forEach((v) => root.style.removeProperty(v));
+    };
+  }, [event?.theme, customFrom, customTo]);
 
   // Derived data (null-safe — event may not exist)
   const themeClass = `theme-${event?.theme || 'neon'}`;
@@ -109,6 +124,14 @@ export default function GuestInvite() {
     currentUser && event?.host_id ? isFollowing(currentUser.id, event.host_id) : false
   );
   const canFollow = currentUser && event?.host_id && currentUser.id !== event.host_id;
+
+  // The party is over once its end time has passed — RSVPs close.
+  const partyOver = isEventOver(event);
+
+  // Song requests + vibe wall are for people who've actually joined the party
+  // (RSVP'd this session or previously) — hosts/co-hosts always have access.
+  const hasJoined = !!(existingRsvp || submittedRsvp);
+  const canUseSocial = hasJoined || (!!currentUser && !!event && isPartyManager(event, currentUser.id));
 
   // Live sync so an approval, decline, or deadline-expiry from another
   // session (the host's dashboard, or the sweep above running elsewhere)
@@ -189,6 +212,10 @@ export default function GuestInvite() {
 
   /** Handle RSVP submission */
   const handleRSVP = () => {
+    if (partyOver) {
+      setAgeError('This party has ended — RSVPs are closed.');
+      return;
+    }
     const trimmed = guestName.trim();
     if (!trimmed) return;
 
@@ -248,6 +275,10 @@ export default function GuestInvite() {
       rsvpData.cover_paid = false;
     }
 
+    // The RSVP is recorded immediately (holds the spot; the payment deadline runs
+    // from here) whether or not the guest completes payment. The entry pass stays
+    // in a clear "payment required" state until a UTR is actually submitted (see
+    // `paymentSubmitted` → QRTicket), so an unpaid RSVP never *reads* as paid.
     if (existingRsvp) {
       // Merge onto the existing row (not a full replace) so fields this form
       // doesn't know about — checked_in, settled, cover_paid, plus_one_approved
@@ -264,6 +295,7 @@ export default function GuestInvite() {
     }
 
     if (needsPayment) {
+      setPaymentSubmitted(false);
       setPendingRsvp({ ...rsvpData, _additionalGuests: additionalGuests });
       setShowPaymentModal(true);
     }
@@ -289,6 +321,7 @@ export default function GuestInvite() {
       gateway: 'upi',
     });
 
+    setPaymentSubmitted(true);
     show('Submitted — the host will review your payment shortly.', 'success');
     setPendingRsvp(null);
   };
@@ -493,29 +526,44 @@ export default function GuestInvite() {
             </div>
           )}
 
-          {/* ---- Song Requests ---- */}
+          {/* ---- Song Requests (unlocked once you've joined) ---- */}
           <Reveal className="invite-section" variant="left">
             <h2 className="invite-section__title">Song Requests</h2>
             <GlassCard>
-              <SongRequestQueue
-                eventId={event.id}
-                requesterName={currentUser ? currentUser.name : (guestName || 'Guest')}
-              />
+              {canUseSocial ? (
+                <SongRequestQueue
+                  eventId={event.id}
+                  requesterName={currentUser ? currentUser.name : (guestName || 'Guest')}
+                />
+              ) : (
+                <div className="invite-social-locked">
+                  <span className="invite-social-locked__icon" aria-hidden="true">🔒</span>
+                  <p className="invite-social-locked__text">RSVP to the party to request songs.</p>
+                </div>
+              )}
             </GlassCard>
           </Reveal>
 
-          {/* ---- Vibe Wall (optional) ---- */}
+          {/* ---- Vibe Wall (optional; unlocked once you've joined) ---- */}
           {event.vibe_wall_enabled !== false && (
             <Reveal className="invite-section" variant="left">
               <h2 className="invite-section__title">Vibe Wall</h2>
               <GlassCard>
+                {canUseSocial ? (
                 <VibeWall
                   eventId={event.id}
                   authorName={currentUser ? currentUser.name : guestName}
                   authorId={currentUser ? currentUser.id : null}
                   hostId={event.host_id}
                   closesAt={event.vibe_wall_closes_at}
+                  cooldownSeconds={event.vibe_wall_cooldown_seconds || 0}
                 />
+                ) : (
+                  <div className="invite-social-locked">
+                    <span className="invite-social-locked__icon" aria-hidden="true">🔒</span>
+                    <p className="invite-social-locked__text">RSVP to the party to post on the vibe wall.</p>
+                  </div>
+                )}
               </GlassCard>
             </Reveal>
           )}
@@ -580,6 +628,11 @@ export default function GuestInvite() {
           {/* ---- RSVP Section ---- */}
           <div className="invite-section">
             <div className="invite-rsvp">
+              {partyOver && (
+                <div className="invite-ended-banner">
+                  🎈 This party has ended — RSVPs are closed. Hope it was a good one.
+                </div>
+              )}
               {event.contains_alcohol && currentUser && getAge(currentUser.birthdate) < 21 ? (
                 <div className="invite-age-block glass-strong">
                   <span className="age-gate-title">21+ Age Check Failed</span>
@@ -629,12 +682,13 @@ export default function GuestInvite() {
                     <input
                       className="invite-rsvp__input"
                       type="tel"
-                      inputMode="tel"
-                      placeholder="phone number (for payment verification)"
+                      inputMode="numeric"
+                      placeholder="10-digit mobile (for payment verification)"
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
+                      onChange={(e) => setGuestPhone(digitsOnly(e.target.value).slice(0, 10))}
                       autoComplete="tel"
                       aria-label="Phone number"
+                      maxLength={10}
                     />
                   )}
 
@@ -670,10 +724,10 @@ export default function GuestInvite() {
                   <button
                     className={`invite-rsvp__cta ${submitted ? 'invite-rsvp__cta--success' : ''}`}
                     onClick={handleRSVP}
-                    disabled={submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob) || (event.cover_charge > 0 && !isWaitlisted && !guestPhone.trim()) || Object.values(foodBreakdown).reduce((a, b) => a + b, 0) !== guestCount || Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) !== guestCount}
+                    disabled={partyOver || submitted || !guestName.trim() || (event.contains_alcohol && !currentUser && !guestDob) || (event.cover_charge > 0 && !isWaitlisted && !isTenDigitPhone(guestPhone)) || Object.values(foodBreakdown).reduce((a, b) => a + b, 0) !== guestCount || Object.values(drinksBreakdown).reduce((a, b) => a + b, 0) !== guestCount}
                     type="button"
                   >
-                    {submitted ? '✓ Saved' : (isEditingRsvp ? 'Update RSVP' : (isWaitlisted ? 'Join Waitlist' : 'Join Party'))}
+                    {partyOver ? 'Party ended' : (submitted ? '✓ Saved' : (isEditingRsvp ? 'Update RSVP' : (isWaitlisted ? 'Join Waitlist' : 'Join Party')))}
                   </button>
 
                   {submitted && submittedRsvp && (
@@ -681,7 +735,7 @@ export default function GuestInvite() {
                       <div className="invite-waitlist-badge">⏳ You're on the waitlist — we'll ping you if a spot frees up.</div>
                     ) : (
                       <div className="invite-ticket-wrap">
-                        <QRTicket event={event} rsvp={submittedRsvp} />
+                        <QRTicket event={event} rsvp={submittedRsvp} paymentSubmitted={paymentSubmitted} />
                         {event.cover_charge > 0 && !submittedRsvp.cover_paid && (
                           <button
                             type="button"

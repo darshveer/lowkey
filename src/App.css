@@ -4,6 +4,25 @@
   background: var(--bg-black);
 }
 
+/* ---- Per-route entrance (keyed by pathname in App.jsx) ---- */
+/* NB: no `both`/`forwards` fill — a lingering `transform` here would become the
+   containing block for every descendant `position: fixed` (modals, overlays),
+   breaking them (they'd size/scroll against the page, not the viewport). Without
+   fill, the transform reverts to none the instant the animation ends. */
+.route-view {
+  animation: route-enter 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@keyframes route-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* The global reduced-motion catch-all in index.css neutralizes this; explicit for clarity. */
+@media (prefers-reduced-motion: reduce) {
+  .route-view { animation: none; }
+}
+
 /* ---- Lazy route loading fallback ---- */
 .route-fallback {
   display: flex;
@@ -11,8 +30,18 @@
   gap: var(--space-lg);
   align-items: center;
   justify-content: center;
-  min-height: 60dvh;
+  /* Center in the content area between the fixed navbar and the page bottom —
+     fill the viewport and offset the navbar so the loader sits at the optical middle. */
+  min-height: 100dvh;
+  padding-top: 84px;
+  box-sizing: border-box;
   width: 100%;
+}
+
+@media (max-width: 768px) {
+  .route-fallback {
+    padding-top: 72px;
+  }
 }
 
 .route-fallback__logo {

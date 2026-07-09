@@ -58,6 +58,10 @@ export default function CreatorStudio() {
   const [externalPhotoLink, setExternalPhotoLink] = useState('');
   const [vibeWallEnabled, setVibeWallEnabled] = useState(true);
   const [vibeWallClosesAt, setVibeWallClosesAt] = useState('');
+  const [vibeWallCooldown, setVibeWallCooldown] = useState(0); // seconds between a guest's posts
+  // Custom party colours — a two-stop gradient the host picks (theme === 'custom').
+  const [customFrom, setCustomFrom] = useState('#8B5CF6');
+  const [customTo, setCustomTo] = useState('#FF007F');
 
   /** Returns true if end time is on the next day relative to start time */
   const isNextDay = timeStart && timeEnd && timeEnd < timeStart;
@@ -205,6 +209,8 @@ export default function CreatorStudio() {
       external_photo_link: externalPhotoLink.trim() || null,
       vibe_wall_enabled: vibeWallEnabled,
       vibe_wall_closes_at: vibeWallClosesAt ? new Date(vibeWallClosesAt).toISOString() : null,
+      vibe_wall_cooldown_seconds: vibeWallEnabled ? Number(vibeWallCooldown) || 0 : 0,
+      custom_gradient: theme === 'custom' ? { from: customFrom, to: customTo } : null,
     };
 
     saveEvent(event);
@@ -443,7 +449,39 @@ export default function CreatorStudio() {
             <span className="creator-theme-card__name">{t.name}</span>
           </div>
         ))}
+        {/* Custom gradient */}
+        <div
+          className={`creator-theme-card${theme === 'custom' ? ' creator-theme-card--selected' : ''}`}
+          onClick={() => setTheme('custom')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && setTheme('custom')}
+          aria-label="Select a custom gradient theme"
+          aria-pressed={theme === 'custom'}
+          style={{ background: `linear-gradient(135deg, ${customFrom}, ${customTo})` }}
+        >
+          <span className="creator-theme-card__emoji">🎨</span>
+          <span className="creator-theme-card__name">Custom</span>
+        </div>
       </div>
+
+      {theme === 'custom' && (
+        <div className="creator-field creator-custom-colors">
+          <label className="creator-field__label">Your gradient</label>
+          <div className="creator-custom-colors__row">
+            <label className="creator-custom-colors__swatch">
+              <input type="color" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} aria-label="Gradient start colour" />
+              <span>From</span>
+            </label>
+            <div className="creator-custom-colors__preview" style={{ background: `linear-gradient(135deg, ${customFrom}, ${customTo})` }} />
+            <label className="creator-custom-colors__swatch">
+              <input type="color" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label="Gradient end colour" />
+              <span>To</span>
+            </label>
+          </div>
+          <small className="form-help">These two colours retint the party — ambient glow, highlights, and accents.</small>
+        </div>
+      )}
 
       {/* Vibe dropdown */}
       <div className="creator-field">
@@ -575,6 +613,23 @@ export default function CreatorStudio() {
             />
             <small className="form-help">
               Leave blank to keep it open forever. Pick a time and new posts stop after it (e.g. an hour after the party ends).
+            </small>
+
+            <label className="creator-field__label" htmlFor="vibe-cooldown" style={{ marginTop: '12px' }}>Slow mode (anti-spam)</label>
+            <select
+              id="vibe-cooldown"
+              className="input-glass"
+              value={vibeWallCooldown}
+              onChange={(e) => setVibeWallCooldown(Number(e.target.value))}
+            >
+              <option value={0}>Off — post freely</option>
+              <option value={10}>10 seconds between posts</option>
+              <option value={30}>30 seconds between posts</option>
+              <option value={60}>1 minute between posts</option>
+              <option value={300}>5 minutes between posts</option>
+            </select>
+            <small className="form-help">
+              Makes each guest wait between posts so the wall doesn't get spammed.
             </small>
           </div>
         )}

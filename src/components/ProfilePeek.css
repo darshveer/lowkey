@@ -38,6 +38,15 @@
     inset 0 -10px 22px rgba(0, 0, 0, 0.28);
 }
 
+/* Anchored variant — positioned next to the click point (see ProfilePeek.jsx),
+   so it pops from where it was opened instead of dead-center. */
+.peek-card--anchored {
+  position: fixed;
+  margin: 0;
+  width: min(86vw, 280px);
+  transform-origin: top left;
+}
+
 .peek-card::before {
   content: '';
   position: absolute;

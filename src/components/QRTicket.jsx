@@ -12,7 +12,7 @@ import './QRTicket.css';
  * locked, since a scan reads the same token whether or not it's "active"
  * and the underlying rules (payment, timing) are what actually gate entry.
  */
-export default function QRTicket({ event, rsvp }) {
+export default function QRTicket({ event, rsvp, paymentSubmitted = true }) {
   const [dataUrl, setDataUrl] = useState(null);
   const { unlocked, reason } = getEntryQrState(event, rsvp);
 
@@ -27,7 +27,10 @@ export default function QRTicket({ event, rsvp }) {
 
   if (!rsvp) return null;
 
-  const lockedText = reason === 'payment' ? 'Locked — awaiting payment approval' : 'Unlocks 1 day before the party';
+  const lockedText =
+    reason === 'payment'
+      ? (paymentSubmitted ? 'Locked — awaiting payment approval' : 'Locked — payment required')
+      : 'Unlocks 1 day before the party';
 
   return (
     <div className={`qr-ticket ${rsvp.checked_in ? 'qr-ticket--in' : ''} ${!unlocked ? 'qr-ticket--pending' : ''}`}>
@@ -55,7 +58,9 @@ export default function QRTicket({ event, rsvp }) {
           : unlocked
             ? 'Show this QR at the door'
             : reason === 'payment'
-              ? 'Your QR unlocks once the host approves your payment'
+              ? (paymentSubmitted
+                  ? 'Your QR unlocks once the host approves your payment'
+                  : 'Submit your payment below to lock in your spot')
               : 'Your QR unlocks 1 day before the party (once payment is approved)'}
       </p>
     </div>

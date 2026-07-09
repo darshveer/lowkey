@@ -489,12 +489,21 @@ export function unreadNotificationCount(userId) {
   return getNotifications(userId).filter(n => !n.read).length;
 }
 
-/** Create a notification for a recipient (local cache + Supabase). */
-export function addNotification({ recipient_id, type, title, body, event_id = null, link = null }) {
+/**
+ * Create a notification for a recipient (local cache + Supabase).
+ * Pass a stable `id` for events that can be produced by more than one sweep
+ * (payment expiry/reminder/waitlist run on the invite, the dashboard, and the
+ * pg_cron job) — a deterministic id makes it idempotent, so the same expiry
+ * never yields two "Spot released" notifications. Without one, a random id is used.
+ */
+export function addNotification({ id, recipient_id, type, title, body, event_id = null, link = null }) {
   if (!recipient_id) return null;
   const all = load('notifications', []);
+  const notifId = id || `ntf_${generateId()}`;
+  // Idempotency: if this exact notification already exists locally, do nothing.
+  if (all.some((n) => n.id === notifId)) return all.find((n) => n.id === notifId);
   const notification = {
-    id: `ntf_${generateId()}`,
+    id: notifId,
     recipient_id,
     type,
     title,
@@ -507,7 +516,9 @@ export function addNotification({ recipient_id, type, title, body, event_id = nu
   all.push(notification);
   save('notifications', all);
 
-  supabase.from('notifications').insert(notification).then(({ error }) => {
+  // upsert + ignoreDuplicates: a deterministic id may already exist server-side
+  // (another sweep or the cron inserted it) — that's expected, not an error.
+  supabase.from('notifications').upsert(notification, { onConflict: 'id', ignoreDuplicates: true }).then(({ error }) => {
     if (error) console.warn('addNotification failed:', error.message);
   });
   window.dispatchEvent(new CustomEvent('lowkey_notifications'));
@@ -807,6 +818,7 @@ export function promoteWaitlist(eventId) {
 
   if (next.user_id) {
     addNotification({
+      id: `ntf_promoted_${next.id}`, // deterministic → one promotion notice per RSVP
       recipient_id: next.user_id,
       event_id: eventId,
       type: 'waitlist',
@@ -852,6 +864,7 @@ export function checkPaymentDeadlines(eventId) {
       if (r.user_id) {
         const hoursLeft = Math.max(1, Math.round((new Date(r.payment_deadline_at).getTime() - nowMs) / 3600000));
         addNotification({
+          id: `ntf_remind_${r.id}`, // deterministic → one reminder per RSVP, even if swept twice
           recipient_id: r.user_id,
           event_id: eventId,
           type: 'payment',
@@ -866,6 +879,7 @@ export function checkPaymentDeadlines(eventId) {
       deleteRSVP(r.id);
       if (r.user_id) {
         addNotification({
+          id: `ntf_expired_${r.id}`, // deterministic → one "Spot released" per RSVP across all sweeps
           recipient_id: r.user_id,
           event_id: eventId,
           type: 'payment',
@@ -928,12 +942,15 @@ function profileFromAuthUser(user) {
  * public.profiles row from the sign-up metadata (see supabase/migrations).
  * @returns {Promise<{ success: boolean, error?: string, user?: Object, needsConfirmation?: boolean }>}
  */
-export async function registerUser(user) {
+export async function registerUser(user, captchaToken) {
   const email = (user.email || '').trim().toLowerCase();
   const { data, error } = await supabase.auth.signUp({
     email,
     password: user.password,
     options: {
+      // Present only when Turnstile is configured; Supabase ignores it if CAPTCHA
+      // protection is off, and requires it when on.
+      ...(captchaToken ? { captchaToken } : {}),
       data: {
         name: (user.name || '').trim(),
         username: (user.username || '').trim().toLowerCase(),
@@ -962,18 +979,92 @@ export async function registerUser(user) {
  * surface. Users sign up with an email and log in with it.)
  * @returns {Promise<{ success: boolean, error?: string, user?: Object }>}
  */
-export async function loginUser(email, password) {
+export async function loginUser(email, password, captchaToken) {
   const normalized = (email || '').trim().toLowerCase();
   if (!normalized.includes('@')) {
     return { success: false, error: 'Please log in with your email address.' };
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email: normalized, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalized,
+    password,
+    ...(captchaToken ? { options: { captchaToken } } : {}),
+  });
   if (error) return { success: false, error: error.message };
 
   const profile = (await fetchProfile(data.user.id)) || profileFromAuthUser(data.user);
   cacheSession(profile);
   return { success: true, user: profile };
+}
+
+/**
+ * Start the Google OAuth sign-in flow. This redirects the browser to Google and
+ * back to the app; supabase-js then detects the session in the return URL and
+ * `initAuth`'s onAuthStateChange handler hydrates the profile automatically.
+ *
+ * Google supplies name + email but NOT username / birthdate, so a first-time
+ * Google user lands with an incomplete profile — App.jsx's ProfileCompletionModal
+ * collects those before they can host/RSVP (birthdate powers the 21+ alcohol gate).
+ *
+ * The Google client ID/secret live in the Supabase dashboard (Auth → Providers →
+ * Google), never in this browser bundle. No new VITE_* env var is required.
+ * @returns {Promise<{ success: boolean, error?: string }>}
+ */
+export async function signInWithGoogle() {
+  // Return to the CURRENT origin so this works in dev (localhost) and prod alike;
+  // both must be listed under Supabase → Auth → URL Configuration → Redirect URLs.
+  const redirectTo = window.location.origin;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      // Always let the user pick which Google account, even if already signed in.
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  if (error) return { success: false, error: error.message };
+  // On success the browser is navigating away to Google; nothing else to do here.
+  return { success: true };
+}
+
+/** True when a signed-in profile is missing the fields Google OAuth can't supply. */
+export function isProfileIncomplete(profile) {
+  return !!profile && (!profile.username || !profile.birthdate);
+}
+
+/**
+ * Fill in the username / birthdate (and optional phone) a Google user lacks.
+ * Awaited (unlike updateUserProfile's fire-and-forget) so the UI can surface a
+ * taken-username conflict. RLS `profiles_self_update` scopes this to auth.uid()=id.
+ * @returns {Promise<{ success: boolean, error?: string, user?: Object }>}
+ */
+export async function completeProfile(userId, { username, birthdate, phone }) {
+  const updates = {
+    username: (username || '').trim().toLowerCase(),
+    birthdate: birthdate || null,
+    phone: (phone || '').trim() || null,
+  };
+
+  const { error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    // 23505 = unique_violation: the chosen username is taken.
+    if (error.code === '23505' || /duplicate|unique/i.test(error.message || '')) {
+      return { success: false, error: 'That username is already taken — try another.' };
+    }
+    return { success: false, error: error.message };
+  }
+
+  const current = getCurrentUser();
+  const merged = { ...(current || { id: userId }), ...updates };
+  if (current && current.id === userId) cacheSession(merged);
+  window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  return { success: true, user: merged };
 }
 
 /** Current signed-in profile (synchronous, from the local cache). */
@@ -989,6 +1080,50 @@ export async function logoutUser() {
     console.warn('signOut failed:', e);
   }
   cacheSession(null);
+}
+
+/** Wipe every LowKey localStorage key (used on account deletion). */
+function clearAllLocalData() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('clearAllLocalData failed:', e);
+  }
+}
+
+/**
+ * Permanently delete the signed-in user's account and all their data via the
+ * `delete_my_account` RPC (a SECURITY DEFINER function — see migration 0015).
+ * The function acts on auth.uid() only, so it can delete no one but the caller.
+ * On success we sign out and wipe the local cache. This is irreversible.
+ * @returns {Promise<{ success: boolean, error?: string }>}
+ */
+export async function deleteMyAccount() {
+  const user = getCurrentUser();
+  if (!user) return { success: false, error: 'You are not signed in.' };
+
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) {
+    // A missing function (migration 0015 not run) or any DB error is surfaced,
+    // not swallowed — deletion must never *appear* to succeed when it didn't.
+    return { success: false, error: error.message };
+  }
+
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.warn('signOut after account deletion failed:', e);
+  }
+  clearAllLocalData();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('lowkey_db_sync'));
+  }
+  return { success: true };
 }
 
 /**

@@ -5,15 +5,29 @@
 .payment-modal-overlay {
   position: fixed;
   inset: 0;
+  z-index: var(--z-modal);
+  /* Plain block scroll container. The .payment-modal-scroll child uses
+     min-height:100% + flex-center so it CENTERS the modal when it fits and GROWS
+     (making the overlay scroll) when the modal is taller than the viewport — the
+     one pattern where an oversized modal is never clipped and the submit button
+     stays reachable. */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.payment-modal-scroll {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
   padding: var(--space-md);
+  box-sizing: border-box;
 }
 
 .payment-modal-backdrop {
-  position: absolute;
+  position: fixed; /* stays covering the viewport while the overlay scrolls */
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
@@ -25,7 +39,9 @@
   z-index: 1;
   width: 100%;
   max-width: 440px;
-  max-height: 90vh;
+  /* Natural height — the overlay (grid) centers it and scrolls when it's taller
+     than the viewport. No max-height cap and no internal card scroll — those were
+     what trapped the submit button below the fold. */
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
@@ -83,13 +99,9 @@
 
 .payment-modal-card {
   padding: var(--space-lg) !important;
-  overflow-y: auto;
-  max-height: 100%;
-  -ms-overflow-style: none; /* IE/Edge */
-  scrollbar-width: none; /* Firefox */
-}
-.payment-modal-card::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  /* No internal scroll — the whole modal scrolls within the overlay instead, so
+     the submit button is always reachable. */
+  overflow: visible;
 }
 
 /* Header */

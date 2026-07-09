@@ -1,0 +1,11 @@
+.turnstile-widget {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-sm) 0;
+  min-height: 65px; /* reserve the widget's height so the form doesn't jump when it loads */
+}
+
+/* The Turnstile iframe is a fixed 300px; let it shrink gracefully on narrow phones. */
+.turnstile-widget iframe {
+  max-width: 100%;
+}

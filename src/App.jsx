@@ -1,13 +1,15 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Home from './pages/Home';
 import Navbar from './components/Navbar';
 import SvgDecor from './components/SvgDecor';
 import AnimatedBackground from './components/AnimatedBackground';
 import CursorGlow from './components/CursorGlow';
-import Logo from './components/Logo';
+import LogoLoader from './components/LogoLoader';
+import ProfileCompletionModal from './components/ProfileCompletionModal';
 import { getCurrentUser, logoutUser, initAuth } from './utils/storage';
 import { useToast } from './hooks/useToast';
+import { useTransition } from './hooks/useTransition';
 import './App.css';
 
 // Route-level code splitting keeps the initial bundle lean — the heavier
@@ -19,25 +21,50 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
 function RouteFallback() {
   return (
-    <div className="route-fallback" role="status" aria-live="polite">
-      <Logo size={56} className="route-fallback__logo" />
-      <div className="route-fallback__spinner" />
+    <div className="route-fallback">
+      <LogoLoader size={60} label="" />
     </div>
   );
 }
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { show } = useToast();
+  const { playTransition, playReveal } = useTransition();
+  // True on this page load if we just returned from a Google OAuth redirect (flag
+  // set in main.jsx before supabase strips the URL). Consumed once, below.
+  const oauthReturn = useRef(false);
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState('discover');
   const [loginRedirect, setLoginRedirect] = useState(false);
+
+  // Read (and clear) the OAuth-return flag once, so a Google sign-in this load
+  // gets the split-curtain reveal when the session hydrates.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('lowkey_oauth_return')) {
+        sessionStorage.removeItem('lowkey_oauth_return');
+        oauthReturn.current = true;
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Hydrate the Supabase Auth session on load and subscribe to auth changes.
   useEffect(() => {
     const unsubscribe = initAuth((profile) => setCurrentUser(profile));
     return unsubscribe;
   }, []);
+
+  // When a Google sign-in lands (currentUser becomes set on an OAuth-return load),
+  // play the reveal once — the panels split apart onto the signed-in app (or the
+  // profile-completion modal, for first-time Google users).
+  useEffect(() => {
+    if (oauthReturn.current && currentUser) {
+      oauthReturn.current = false;
+      playReveal();
+    }
+  }, [currentUser, playReveal]);
 
   // Surface cloud-write failures (throttled) so they're never silent again.
   useEffect(() => {
@@ -64,10 +91,14 @@ function App() {
     return () => window.removeEventListener('lowkey_db_sync', syncUser);
   }, []);
 
-  const handleLogout = async () => {
-    await logoutUser();
-    setCurrentUser(null);
-    setActiveTab('discover');
+  const handleLogout = () => {
+    // Play the split-curtain while we tear down the session behind it.
+    playTransition(async () => {
+      await logoutUser();
+      setCurrentUser(null);
+      setActiveTab('discover');
+      navigate('/');
+    });
   };
 
   return (
@@ -83,6 +114,9 @@ function App() {
         onLogout={handleLogout}
       />
       <Suspense fallback={<RouteFallback />}>
+        {/* Keyed by pathname so each navigation replays a soft fade/slide-in
+            (see .route-view in App.css); reduced-motion is neutralized globally. */}
+        <div className="route-view" key={location.pathname}>
         <Routes location={location}>
           <Route
             path="/"
@@ -105,10 +139,14 @@ function App() {
           <Route path="/invite/:eventId" element={<GuestInvite key={location.pathname} />} />
           <Route path="/party/:eventId" element={<PartyDashboard key={location.pathname} />} />
         </Routes>
+        </div>
       </Suspense>
       <footer className="footer-culture">
         made with 💜 for the culture
       </footer>
+      {/* Shown app-wide when a Google sign-in leaves the profile without a
+          username / birthdate — blocks until completed (birthdate = 21+ gate). */}
+      <ProfileCompletionModal currentUser={currentUser} setCurrentUser={setCurrentUser} />
     </div>
   );
 }

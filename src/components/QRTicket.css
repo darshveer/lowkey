@@ -84,14 +84,22 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 10px;
+  padding: var(--space-md);
   font-size: 40px;
   color: #6b7280;
+  text-align: center;
 }
 .qr-ticket__locked span {
+  display: block;
+  max-width: 22ch;
   font-size: var(--text-sm);
   font-weight: 700;
+  line-height: 1.4;
   color: #6b7280;
+  text-align: center;
+  text-wrap: balance;
 }
 .qr-ticket--pending .qr-ticket__code {
   background: repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 10px, #e5e7eb 10px, #e5e7eb 20px);

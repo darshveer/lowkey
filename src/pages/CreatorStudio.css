@@ -827,3 +827,37 @@
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+/* ---- Custom gradient colour picker ---- */
+.creator-custom-colors {
+  margin-top: var(--space-md);
+}
+.creator-custom-colors__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+.creator-custom-colors__swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.creator-custom-colors__swatch input[type="color"] {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: pointer;
+}
+.creator-custom-colors__preview {
+  flex: 1;
+  height: 48px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border-strong);
+}

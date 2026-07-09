@@ -224,6 +224,16 @@ export function formatINR(amount) {
   return '₹' + amount.toLocaleString('en-IN');
 }
 
+/** Strip everything but digits (for phone-number inputs). */
+export function digitsOnly(value) {
+  return (value || '').replace(/\D/g, '');
+}
+
+/** True when the value is exactly 10 digits — an Indian mobile number, no country code. */
+export function isTenDigitPhone(value) {
+  return /^\d{10}$/.test(digitsOnly(value));
+}
+
 /**
  * Resolve a party's end Date from its date + time fields.
  * @param {Object} event

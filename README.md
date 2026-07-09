@@ -13,7 +13,7 @@ on a live vibe wall. Built for the Indian Gen-Z scene.
 > **📌 If you are a new agent picking this up, read [Architecture](#architecture),
 > [Gotchas & hard-won lessons](#gotchas--hard-won-lessons), and [Notes for AI agents](#notes-for-ai-agents) first.**
 > The single most important fact: the app writes the *entire* object to Supabase, so
-> **the DB schema must contain every column** — run all migrations `0001 → 0014` or writes fail silently.
+> **the DB schema must contain every column** — run all migrations `0001 → 0017` or writes fail silently.
 
 ---
 
@@ -94,7 +94,8 @@ There is **no test suite**. Verification is done by `lint` + `build` + driving t
 3. `getCurrentUser()` reads the **cached** session, so it is **synchronous** — that's why
    React state initializers can call it directly. Don't make it async.
 
-**Auth.** Real **Supabase Auth** (`signUp` / `signInWithPassword`, **email-only** login).
+**Auth.** Real **Supabase Auth** — email/password (`signUp` / `signInWithPassword`, **email-only**
+login) **plus Google OAuth** (`signInWithOAuth`; see [Auth model](#auth-model)).
 A DB trigger (`handle_new_user`) creates the `profiles` row from signup metadata. The
 signed-in profile is cached in `localStorage['lowkey_session']`; `initAuth()` (in `App.jsx`)
 hydrates it from the real session on load and subscribes to auth changes.
@@ -109,12 +110,33 @@ crashes the page (this happened when the dashboard + embedded VibeWall both subs
 honor `prefers-reduced-motion`. FX accent colors retint per party theme via a
 `data-party-theme` attribute set on `<html>` by GuestInvite/PartyDashboard.
 
+**Page transitions.** `TransitionProvider` (mounted in `main.jsx`) exposes two APIs via
+`useTransition()`:
+- `playTransition(action)` — split-curtain: two panels sweep in to meet at center behind the
+  LowKey logo, the (optionally async) `action` runs while fully covered, then the panels split
+  apart to reveal the new state. Wired to email/password login & signup, logout, account
+  deletion, and **profile completion** (first-time Google users, after they set username + DOB).
+- `playReveal()` — reveal-only: the curtain mounts already covering the screen and just splits
+  apart. Used for **Google OAuth return** (an "arrival" — there's no action to run, the app is
+  already loaded). `main.jsx` sets a `sessionStorage['lowkey_oauth_return']` flag when the URL
+  carries an OAuth `code`/`access_token` (before supabase-js strips it); `App.jsx` consumes it
+  once the session hydrates and plays the reveal. Normal loads (no flag) get no curtain.
+
+Every route change also replays a soft fade/slide-in (`.route-view`, keyed by pathname in
+`App.jsx`). All of the above **skip entirely under `prefers-reduced-motion`** (the provider runs
+the action instantly; no overlay). The curtain sits at `z-index: 3000`, above toasts
+(`--z-toast: 2000`).
+
+**Loading indicator.** `LogoLoader` (`components/LogoLoader.jsx`) is the brand loader — the logo
+pulsing inside an orbiting conic-gradient ring. Used for the lazy-route fallback and the UPI-QR
+generation state; reuse it for any new loading spot. Reduced-motion friendly.
+
 ---
 
 ## Entry points & data flow
 - `src/main.jsx` — bootstraps: `clearLegacyPlaceholders()` → `syncWithSupabase()` →
-  renders `<BrowserRouter><ToastProvider><App/></ToastProvider></BrowserRouter>` →
-  registers the service worker (prod only).
+  renders `<BrowserRouter><ToastProvider><TransitionProvider><App/></TransitionProvider></ToastProvider></BrowserRouter>`
+  → registers the service worker (prod only).
 - `src/App.jsx` — routes, `initAuth()` hydration, the `lowkey_sync_error` toast listener,
   global FX mount, lazy-loaded pages.
 - **Representative flow — create a party:**
@@ -133,7 +155,7 @@ honor `prefers-reduced-motion`. FX accent colors retint per party theme via a
 ```
 .
 ├── public/                  # favicon.svg (brand mark), manifest.webmanifest, sw.js, _redirects
-├── supabase/migrations/     # ordered SQL — run 0001 → 0014
+├── supabase/migrations/     # ordered SQL — run 0001 → 0017
 ├── src/
 │   ├── main.jsx             # entry
 │   ├── App.jsx              # routes + auth hydration + sync-error toast + FX
@@ -188,7 +210,7 @@ auth user's **uuid**. Owner references (`host_id`, `user_id`, `recipient_id`,
 | Table | Notable columns | Notes |
 |---|---|---|
 | `profiles` | `id (uuid FK auth.users)`, email, name, username, birthdate, phone, profile_pic_b64, `achievements (jsonb)` | one per auth user; created by `handle_new_user` trigger |
-| `events` | host_id, host_name, name, tagline, date, time_start/end, time_end_next_day, city, location_name/address/lat/lng, theme, cover_charge, capacity, discoverable, vibe_tags(jsonb), has_personal_dj, dj_*, contains_alcohol, external_photo_link, spotify_playlist_url, upi_id, photo_dump_unlocked, `vibe_wall_enabled`, `vibe_wall_closes_at`, `co_hosts(jsonb)`, `started`, `started_at`, `archived`, `payment_deadline_hours` (default 12) | public read; host-only write. `archived`/`discoverable:false` hides from Discover |
+| `events` | host_id, host_name, name, tagline, date, time_start/end, time_end_next_day, city, location_name/address/lat/lng, theme, `custom_gradient(jsonb {from,to})`, cover_charge, capacity, discoverable, vibe_tags(jsonb), has_personal_dj, dj_*, contains_alcohol, external_photo_link, spotify_playlist_url, upi_id, photo_dump_unlocked, `vibe_wall_enabled`, `vibe_wall_closes_at`, `vibe_wall_cooldown_seconds`, `co_hosts(jsonb)`, `started`, `started_at`, `archived`, `payment_deadline_hours` (default 12) | public read; host-only write. `theme:'custom'` uses `custom_gradient` for the ambient FX; `vibe_wall_cooldown_seconds` is the per-guest slow-mode between vibe-wall posts. `archived`/`discoverable:false` hides from Discover |
 | `rsvps` | event_id, user_id, guest_name, status(`going`/`maybe`/`waitlist`), guest_count, poll_food(jsonb), poll_drinks(jsonb), `plus_one_requested`, `plus_one_name`, `plus_one_approved`, `settled`, `checked_in`, `cover_paid`, `payment_deadline_at`, `payment_reminder_sent` | **public read** → a guest writes their own row, **and the host/co-hosts write any row under their event** (check-in, settlement, +1, cover_paid). `cover_paid`/`checked_in` flip-to-true is host/co-host-only (trigger, `0014`). The `guest_phone` / `guest_birthdate` columns still exist but the app **no longer writes PII into them** (public table) — phone → `payments.phone`, birthdate → client-only age check |
 | `expenses` | event_id, description, amount, paid_by, `split_type`(equal/custom), `split_shares(jsonb)`, `receipt_url` | host-only |
 | `payments` | event_id, rsvp_id, amount, paid_by, `phone`, transaction_id, gateway, `status` (`pending`/`approved`/`declined`) | insert: anyone (self-reported UTR); **update (approve/decline): host/co-hosts only** |
@@ -228,6 +250,9 @@ lines error if re-run — drop them if so).
 | `0012_payment_approval.sql` | `rsvps.cover_paid` (entry-QR gate) + **fixes rsvps/payments RLS** so the host/co-hosts can actually write to a guest's row (check-in, settlement, +1, approvals were silently rejected before this) |
 | `0013_payment_deadlines_and_phone.sql` | `events.payment_deadline_hours`, `rsvps.payment_deadline_at` / `payment_reminder_sent`, `payments.phone` — the payment-deadline/reminder/waitlist-promotion system |
 | `0014_secure_rsvp_manager_fields.sql` | **security fix** — a BEFORE INSERT/UPDATE trigger so only the host/co-hosts can set `rsvps.cover_paid` / `checked_in` (a guest owns their row and could otherwise forge `cover_paid:true` to skip payment); also constrains guest payment inserts to `status='pending'`. See [Security model](#security-model). |
+| `0015_delete_account.sql` | **self-service account deletion** — a `SECURITY DEFINER` function `delete_my_account()` (granted to `authenticated` only) that acts on `auth.uid()` alone (no id arg to forge). It full-wipes the caller's data (their hosted events + all data on them, their own RSVPs + linked payments, their photos/comments/follows/notifications) then deletes the `auth.users` row (cascades to `profiles`). Needed because a client-only SPA has no secret key for `auth.admin.deleteUser()`. See [Auth model](#auth-model). |
+| `0016_custom_theme_and_slowmode.sql` | `events.custom_gradient` (jsonb `{from,to}` for a host-picked 'custom' theme) + `events.vibe_wall_cooldown_seconds` (anti-spam slow mode). Full-object upsert ⇒ these columns must exist. |
+| `0017_payment_sweep_cron.sql` | **server-side sweeps on a schedule** — ports `checkPaymentDeadlines` to a `SECURITY DEFINER` SQL function `run_payment_sweeps()` (expire unpaid RSVPs past deadline, promote the waitlist, send reminders) and schedules it every 15 min via **`pg_cron`**, so parties nobody opens still sweep. Doubles as a keep-alive (the job touches the DB, so a free-tier project won't pause). **Prerequisite:** enable the `pg_cron` extension (Dashboard → Database → Extensions). |
 
 **Dashboard settings (not SQL):** Auth → Email → turn **off** "Confirm email" for a smooth
 demo (the UI also handles the confirm flow); Auth → Password security → enable **leaked
@@ -240,8 +265,35 @@ password protection**.
   If email confirmation is on, `registerUser` returns `{ needsConfirmation:true }` and the UI
   shows "check your email".
 - Login: **email-only** (`signInWithPassword`). Username→email lookup was removed for security.
+- **Google OAuth** (`signInWithGoogle` → `supabase.auth.signInWithOAuth({ provider:'google' })`):
+  redirects to Google and back to the current origin; supabase-js detects the session in the
+  return URL and `initAuth`'s `onAuthStateChange` hydrates the profile automatically (no callback
+  route needed). **No new app env var** — the Google client ID/secret live in the Supabase
+  dashboard, never in the browser bundle. Setup: (1) Google Cloud Console → OAuth 2.0 Web client
+  with redirect URI `https://<ref>.supabase.co/auth/v1/callback`; (2) Supabase → Auth → Providers →
+  Google → paste client ID/secret + enable; (3) Supabase → Auth → URL Configuration → add each app
+  origin (`http://localhost:5173`, the Vercel domain) to **Site URL / Redirect URLs**.
+- **Profile-completion gap:** Google supplies `name` + `email` but **not `username` or `birthdate`**
+  (birthdate powers the 21+ alcohol gate; username is unique). So a first-time Google user lands
+  with an incomplete profile and `ProfileCompletionModal` (mounted app-wide in `App.jsx`, shown when
+  `isProfileIncomplete(currentUser)`) blocks the app until they set username + DOB (phone optional),
+  written via `completeProfile()` (awaited — surfaces a taken-username conflict). The Google avatar
+  URL is deliberately **not** imported: profile pics are `data:image` only (`safeImageSrc`
+  `allowRemote:false`), so a remote URL would be blocked and would defeat the IP-beacon protection.
 - `getCurrentUser()` = synchronous cached profile. `initAuth(onChange)` hydrates + subscribes.
 - `updateUserProfile` strips `password` defensively and never writes it to a client-readable table.
+- **Account deletion** (`deleteMyAccount`, Profile page → **Danger Zone**): calls the
+  `delete_my_account()` RPC (migration `0015`) — a `SECURITY DEFINER` function that runs on
+  `auth.uid()` only, so a caller can delete no one but themselves. It full-wipes the user's
+  data and the `auth.users` row (cascades to `profiles`), then the client signs out and clears
+  all `lowkey_*` localStorage. This is the client-only-SPA answer to "no secret key for
+  `auth.admin.deleteUser()`". Works identically for Google and email accounts. Irreversible.
+- **Turnstile CAPTCHA** (optional): if `VITE_TURNSTILE_SITE_KEY` is set, the login/signup forms
+  render a Cloudflare Turnstile widget (`TurnstileWidget`) and pass its token to Supabase as
+  `options: { captchaToken }`. Enable it in **Supabase → Auth → Settings → Enable CAPTCHA
+  protection → Turnstile** and paste the Turnstile **Secret Key** there (never in the browser).
+  When the env var is unset (local-only mode), the widget renders nothing and no token is sent,
+  so local dev stays friction-free. OAuth (Google) is unaffected — it isn't gated by CAPTCHA.
 
 ---
 
@@ -313,10 +365,12 @@ deadline** (host-configurable, default 12h) after which an unpaid RSVP auto-expi
 spot; a one-time **payment reminder** notification as the deadline approaches; **QR entry pass**
 (gated on payment approval **and** being within 1 day of the party — locked before that, see
 [Gotchas](#gotchas--hard-won-lessons)); **add to calendar** (Google + .ics); **weather** forecast;
-**song request** queue; **vibe wall** (realtime, optional, with close timer + delete); **follow**
-the host; live **map** + Google Maps directions.
+**song request** queue and **vibe wall** (realtime, optional, with close timer + delete) — both
+**unlocked only after you RSVP** (hosts/co-hosts always have access); **follow**
+the host; live **map** + Google Maps directions. Phone-number inputs enforce a **10-digit** number.
 
-**Host:** multi-step **create wizard** with **Leaflet pin picker**; live **dashboard** (countdown,
+**Host:** multi-step **create wizard** with **Leaflet pin picker**, **custom gradient theme**
+(pick two colours that retint the party) and a vibe-wall **slow mode** (cooldown between guest posts); live **dashboard** (countdown,
 tallies, guest list); **door check-in** — manual toggle or **camera QR scanner** (host/co-host
 only); **payment Approvals tab** — Pending / Approved / Declined sub-tabs (interchangeable),
 searchable by phone number, name, or UTR, one-tap approve/decline; **kitty** with UPI QR,
@@ -355,7 +409,11 @@ Everything persists here. Exported API (all localStorage-first + background Supa
   getProfile, findProfileByEmail` (synced-profile lookups for co-hosts + profile peeks)
 - **Notifications:** `getNotifications, unreadNotificationCount, addNotification, markNotificationsRead`
 - **Realtime:** `subscribeToEvent(eventId, {onRsvp,onPhoto,onComment,onPayment})`, `subscribeToNotifications(userId, handler)`
-- **Auth:** `registerUser, loginUser, getCurrentUser, logoutUser, initAuth, updateUserProfile`
+- **Auth:** `registerUser, loginUser, signInWithGoogle, getCurrentUser, logoutUser, initAuth,
+  updateUserProfile, isProfileIncomplete, completeProfile, deleteMyAccount` (`completeProfile`
+  backs the Google profile-completion step; `deleteMyAccount` is the Danger-Zone full wipe via
+  the `delete_my_account` RPC — see [Auth model](#auth-model)). `registerUser`/`loginUser` take
+  an optional trailing `captchaToken` (Turnstile).
 - **Sync:** `syncWithSupabase` (pull all), `resyncToCloud` (re-push *your own* rows then pull;
   returns `{pushed, failed, firstError, needsAuth}` — used by the ☁️ Re-sync button)
 - Internal: `reportSyncError(context, error)` broadcasts `lowkey_sync_error`; `notifyHost(...)`.
@@ -390,16 +448,18 @@ Copy `.env.example` → `.env.local` (gitignored). **Only `VITE_*` vars reach th
 | `VITE_SUPABASE_URL` | client | base project URL `https://<ref>.supabase.co` (NOT the `/rest/v1/` path) |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | client | `sb_publishable_…` (browser-safe; replaces legacy anon) |
 | `VITE_PUBLIC_APP_URL` | client | canonical URL for share links |
+| `VITE_TURNSTILE_SITE_KEY` | client | **optional** — Cloudflare Turnstile **public** site key for the login/signup CAPTCHA. Unset = CAPTCHA disabled (widget renders nothing). The Turnstile **secret** key goes in the Supabase dashboard, never here. |
 
 > The Supabase **secret key** (`sb_secret_…`) is NOT used by this SPA. Never add it with a
-> `VITE_` prefix.
+> `VITE_` prefix. Same for the **Turnstile secret key** and the **Google OAuth secret** — both
+> live in the Supabase dashboard, not in any `VITE_*` var.
 
 ---
 
 ## Local development & Supabase setup
 1. `npm install`, then `cp .env.example .env.local` and fill in Supabase URL + publishable key.
    **Restart `npm run dev` after editing `.env.local`** (Vite reads env at startup only).
-2. Run migrations `0001 → 0014` in order in the Supabase SQL editor.
+2. Run migrations `0001 → 0017` in order in the Supabase SQL editor.
 3. Turn off "Confirm email" (Auth → Email) for a friction-free demo.
 4. Without Supabase env, the app runs in **local-only mode** (localStorage) — enough to click
    through every screen, but nothing syncs across devices/origins.
@@ -430,9 +490,16 @@ passed without an approved payment, notifies the guest, and promotes the next wa
 with a **tightened 1-hour window** (a spot was just freed for them). A one-time reminder
 notification fires when a deadline is within 2 hours.
 
-**Known limitations:** this is all client-triggered (lazy sweeps on page load), not a real cron —
-a party nobody visits for days won't sweep until someone does. Anonymous guests (no account) can't
-receive any of these notifications, since there's no other channel (SMS/email) wired up.
+**Server-side sweeps (migration `0017`):** the same deadline/reminder/waitlist logic also runs on a
+**`pg_cron`** schedule (`run_payment_sweeps()`, every 15 min) so a party nobody opens still sweeps —
+the client-side lazy sweep on page load remains as the fast path. Anonymous guests (no account) still
+can't receive these notifications (no SMS/email channel).
+
+**Unpaid RSVP status:** a paid-party RSVP is **recorded immediately** at RSVP time (holds the spot;
+the payment deadline runs from then), so RSVP-then-exit works. It just never *reads* as paid — the
+entry pass shows **"payment required"** until a UTR is actually submitted, then **"awaiting payment
+approval"** — via `QRTicket`'s `paymentSubmitted` prop. (Reloading/abandoning the QR screen therefore
+never looks like a confirmed payment.)
 
 ---
 
@@ -480,6 +547,30 @@ Vercel-ready (`vercel.json` = framework `vite` + SPA rewrites).
 
 ## Gotchas & hard-won lessons
 These are real bugs that were hit and fixed. Re-read before touching related code.
+
+- **A lingering `transform` breaks `position: fixed` descendants.** The per-route entrance
+  animation (`.route-view`) must NOT use `both`/`forwards` fill — a persisted `transform:
+  translateY(0)` makes the element a *containing block*, so every `position: fixed` modal inside
+  a route (PaymentModal, ProfilePeek, ConfirmDialog…) sizes/scrolls against the **page height,
+  not the viewport**. Symptom: a tall modal centered off-screen with its buttons unreachable (the
+  overlay was `scrollHeight === clientHeight` at ~2800px = full page). Keep route/entrance
+  animations fill-less, or never wrap routes in a persisted transform.
+- **Scrollable centered modal pattern.** For a modal that can exceed the viewport (PaymentModal):
+  overlay = plain block `overflow-y: auto`; inside it a `min-height: 100%` flex-center wrapper
+  that GROWS past the viewport when the modal is tall (so the overlay scrolls and nothing clips);
+  the backdrop is `position: fixed`; outside-click closes via the wrapper. Do **not** use flex/grid
+  `align-items/place-items: center` on the scroll container — it clips an oversized child's ends.
+- **Event expiry gates RSVP.** `isEventOver(event)` (helpers) must be checked in the invite's RSVP
+  disabled condition + `handleRSVP` guard — a past-dated party should show the "party ended" banner
+  and block RSVPs. It's not automatic; a new RSVP surface must add the check.
+- **Notifications from repeatable sweeps need deterministic ids.** Payment expiry/reminder/waitlist
+  run in ≥3 places (invite, dashboard, pg_cron); each `addNotification` with a *random* id yields a
+  duplicate per source. Pass a stable `id` (`ntf_expired_<rsvpId>`, `ntf_remind_…`, `ntf_promoted_…`)
+  so `addNotification`'s local dedup + the DB's `on conflict (id) do nothing` collapse them to one.
+- **Unpaid RSVP is recorded immediately but must never *read* as paid.** A paid-party RSVP is saved
+  at RSVP time (holds the spot; deadline runs), and the entry pass shows "payment required" (not
+  "awaiting approval") until a UTR is actually submitted — via `QRTicket`'s `paymentSubmitted`.
+  (An earlier attempt to *defer* creating the RSVP until payment broke plain RSVP-then-exit; don't.)
 
 - **Full-object upserts require the full schema.** Missing a column ⇒ the whole write fails
   ⇒ the row never reaches Supabase (silent before; now toasts). If "nothing syncs," suspect a

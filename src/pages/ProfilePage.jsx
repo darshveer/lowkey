@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getEvents, updateUserProfile, addNotification, duplicateEvent, resyncToCloud } from '../utils/storage';
+import { getEvents, updateUserProfile, addNotification, duplicateEvent, resyncToCloud, deleteMyAccount } from '../utils/storage';
 import { formatINR, formatDate, getInitials, getAvatarGradient, safeImageSrc } from '../utils/helpers';
 import { ACHIEVEMENTS, computeStats, earnedKeys } from '../data/achievements';
 import AchievementBadge from '../components/AchievementBadge';
 import Reveal from '../components/Reveal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../hooks/useToast';
+import { useTransition } from '../hooks/useTransition';
 import './ProfilePage.css';
 
 function readCache(key) {
@@ -19,9 +21,32 @@ function readCache(key) {
 export default function ProfilePage({ currentUser, setCurrentUser }) {
   const navigate = useNavigate();
   const { show } = useToast();
+  const { playTransition } = useTransition();
   const fileRef = useRef(null);
   const persistedRef = useRef(false);
   const [resyncing, setResyncing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setDeleteOpen(false);
+    setDeleting(true);
+    let result;
+    // The curtain covers the screen while the account and all its data are wiped.
+    await playTransition(async () => {
+      result = await deleteMyAccount();
+      if (result.success) {
+        setCurrentUser?.(null);
+        navigate('/');
+      }
+    });
+    setDeleting(false);
+    if (result && !result.success) {
+      show(`Couldn't delete your account — ${result.error}`, 'error', 9000);
+    } else if (result?.success) {
+      show('Your account and all its data were permanently deleted.', 'success', 6000);
+    }
+  };
 
   const handleResync = async () => {
     setResyncing(true);
@@ -323,6 +348,40 @@ export default function ProfilePage({ currentUser, setCurrentUser }) {
           </>
         )}
       </Reveal>
+
+      {/* Danger zone — permanent account deletion */}
+      <Reveal as="section" className="profile-section profile-danger" variant="up">
+        <h2 className="profile-section__title">Danger Zone</h2>
+        <div className="profile-danger__card glass">
+          <div className="profile-danger__text">
+            <h3 className="profile-danger__title">Delete account</h3>
+            <p className="profile-danger__desc">
+              Permanently deletes your login, profile, every party you host (and its guests’
+              RSVPs, payments, and photos), plus your own RSVPs, comments, and follows. This
+              cannot be undone.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="profile-danger__btn"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting…' : 'Delete account'}
+          </button>
+        </div>
+      </Reveal>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete your account?"
+        message="This permanently erases your account and everything tied to it — your hosted parties and their guests’ data, your RSVPs, comments, and follows. This action cannot be undone."
+        confirmLabel="Delete forever"
+        cancelLabel="Keep my account"
+        danger
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }

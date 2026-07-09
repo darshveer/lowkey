@@ -36,12 +36,17 @@ function closesInLabel(closeMs, nowMs) {
  * @param {string} [props.authorId]
  * @param {string} [props.hostId] - the party host's id (may delete any post)
  * @param {string} [props.closesAt] - ISO time after which new posts are locked
+ * @param {number} [props.cooldownSeconds] - min seconds between a guest's posts (anti-spam)
  */
-export default function VibeWall({ eventId, authorName, authorId, hostId, closesAt }) {
+export default function VibeWall({ eventId, authorName, authorId, hostId, closesAt, cooldownSeconds = 0 }) {
   const [comments, setComments] = useState(() => getComments(eventId));
   const [text, setText] = useState('');
   const [nowMs, setNowMs] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(null);
+  // Anti-spam cooldown between this guest's posts. cdNow ticks (deferred, like the
+  // close timer below) so we can show a live countdown without Date.now() in render.
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [cdNow, setCdNow] = useState(0);
   const { show } = useToast();
 
   // Only the host and a post's own author may delete it. Anonymous posts
@@ -79,13 +84,27 @@ export default function VibeWall({ eventId, authorName, authorId, hostId, closes
     return () => { clearTimeout(outer); clearTimeout(inner); };
   }, [closesAt]);
 
+  // Tick a fast clock while a cooldown is active, so the countdown updates.
+  useEffect(() => {
+    if (!cooldownUntil) return undefined;
+    let inner;
+    const outer = setTimeout(function tick() {
+      setCdNow(Date.now());
+      inner = setTimeout(tick, 500);
+    }, 0);
+    return () => { clearTimeout(outer); clearTimeout(inner); };
+  }, [cooldownUntil]);
+
   const closeMs = closesAt ? new Date(closesAt).getTime() : null;
   const closed = closeMs != null && nowMs > 0 && nowMs >= closeMs;
   const closesSoon = closeMs != null && nowMs > 0 && !closed ? closesInLabel(closeMs, nowMs) : null;
 
+  const cooling = cooldownUntil > 0 && cdNow > 0 && cdNow < cooldownUntil;
+  const cooldownLeft = cooling ? Math.ceil((cooldownUntil - cdNow) / 1000) : 0;
+
   const submit = (e) => {
     e.preventDefault();
-    if (closed) return;
+    if (closed || cooling) return;
     const body = text.trim();
     if (!body) return;
     const name = (authorName || '').trim() || 'Anon';
@@ -93,6 +112,12 @@ export default function VibeWall({ eventId, authorName, authorId, hostId, closes
     setComments((prev) => [created, ...prev]);
     setText('');
     show('Dropped on the wall', 'success');
+    // Start the anti-spam cooldown (Date.now in a handler is fine — not render).
+    if (cooldownSeconds > 0) {
+      const until = Date.now() + cooldownSeconds * 1000;
+      setCooldownUntil(until);
+      setCdNow(Date.now());
+    }
   };
 
   const confirmDelete = () => {
@@ -115,14 +140,16 @@ export default function VibeWall({ eventId, authorName, authorId, hostId, closes
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="drop some hype…"
+              placeholder={cooling ? `wait ${cooldownLeft}s…` : 'drop some hype…'}
               maxLength={180}
               aria-label="Add a comment to the vibe wall"
+              disabled={cooling}
             />
-            <button className="vibe-wall__send" type="submit" disabled={!text.trim()}>
-              Post
+            <button className="vibe-wall__send" type="submit" disabled={!text.trim() || cooling}>
+              {cooling ? `${cooldownLeft}s` : 'Post'}
             </button>
           </form>
+          {cooling && <p className="vibe-wall__timer">🧊 Slow mode — you can post again in {cooldownLeft}s</p>}
           {closesSoon && <p className="vibe-wall__timer">⏳ {closesSoon}</p>}
         </>
       )}

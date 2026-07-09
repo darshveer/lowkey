@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { generateUPIQR, initiateUPIPayment } from '../utils/upi.js';
-import { formatINR } from '../utils/helpers.js';
+import { formatINR, digitsOnly, isTenDigitPhone } from '../utils/helpers.js';
 import GlowButton from './GlowButton.jsx';
 import GlassCard from './GlassCard.jsx';
+import LogoLoader from './LogoLoader.jsx';
 import './PaymentModal.css';
 
 /**
@@ -141,6 +142,10 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
       setUpiError('Please enter a phone number so the host can verify your payment.');
       return;
     }
+    if (!isTenDigitPhone(trimmedPhone)) {
+      setUpiError('Please enter a valid 10-digit phone number.');
+      return;
+    }
     if (!trimmed) {
       setUpiError('Please enter the UPI UTR / Ref Number.');
       return;
@@ -157,6 +162,13 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
   return (
     <div className="payment-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
       <div className="payment-modal-backdrop" onClick={onClose} />
+      {/* min-height:100% wrapper grows past the viewport when the modal is tall, so
+          the overlay scrolls and the submit button is always reachable. Clicking the
+          empty area around the modal closes it. */}
+      <div
+        className="payment-modal-scroll"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
       <div className="payment-modal-container animate-fade-in-up" ref={dialogRef}>
         <GlassCard className="payment-modal-card">
           {/* Header */}
@@ -187,7 +199,7 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
               <div className="payment-qr-container">
                 {qrLoading ? (
                   <div className="payment-qr-loading">
-                    <div className="payment-qr-spinner" />
+                    <LogoLoader size={44} label="Generating UPI QR…" />
                   </div>
                 ) : qrError ? (
                   <div className="payment-qr-error">{qrError}</div>
@@ -216,12 +228,12 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
                 <input
                   id="payer-phone"
                   type="tel"
-                  inputMode="tel"
-                  placeholder="For the host to verify your payment"
+                  inputMode="numeric"
+                  placeholder="10-digit mobile number"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(digitsOnly(e.target.value).slice(0, 10))}
                   className="utr-input"
-                  maxLength={20}
+                  maxLength={10}
                 />
                 <label htmlFor="utr-number" className="utr-label">
                   Enter UPI Ref / UTR No. (12-digits) *
@@ -247,6 +259,7 @@ export default function PaymentModal({ isOpen, onClose, amount, upiId, payeeName
             </div>
           </div>
         </GlassCard>
+      </div>
       </div>
     </div>
   );

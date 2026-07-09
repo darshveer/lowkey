@@ -1,0 +1,172 @@
+.profile-complete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+}
+
+.profile-complete-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.profile-complete-dialog {
+  position: relative;
+  width: min(92vw, 420px);
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+
+  /* Solid liquid-glass panel — matches ConfirmDialog / NotificationsModal */
+  background:
+    linear-gradient(180deg, rgba(34, 34, 46, 0.94) 0%, rgba(18, 18, 26, 0.96) 100%);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.32),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.profile-complete-dialog::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0) 22%);
+  z-index: 0;
+}
+
+.profile-complete-dialog > * {
+  position: relative;
+  z-index: 1;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .profile-complete-dialog {
+    background: rgba(18, 18, 26, 0.98);
+  }
+}
+
+.profile-complete__title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.profile-complete__subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--space-lg);
+}
+
+.profile-complete__error {
+  background: rgba(255, 82, 82, 0.12);
+  border: 1px solid rgba(255, 82, 82, 0.4);
+  color: #ff9d9d;
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-md);
+}
+
+.profile-complete__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.profile-complete__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-complete__field label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.profile-complete__field input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  transition: border-color var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.profile-complete__field input:focus {
+  outline: none;
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 3px rgba(157, 78, 221, 0.25);
+}
+
+.profile-complete__help {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.profile-complete__submit {
+  margin-top: var(--space-xs);
+  padding: 12px 18px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: #fff;
+  background: var(--gradient-primary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-bounce),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.profile-complete__submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-purple);
+}
+
+.profile-complete__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-complete__signout {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-md);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.profile-complete__signout:hover {
+  color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-complete-dialog { animation: none; }
+  .profile-complete__field input,
+  .profile-complete__submit { transition: none; }
+}

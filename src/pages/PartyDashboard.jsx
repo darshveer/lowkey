@@ -86,11 +86,23 @@ export default function PartyDashboard() {
   const [event, setEvent] = useState(() => getEvent(eventId));
 
   // Tint ambient FX (cursor glow + background) to this party's theme.
+  // A 'custom' theme carries a host-picked gradient — apply it as inline FX vars.
+  const dashCustomFrom = event?.theme === 'custom' ? event?.custom_gradient?.from : null;
+  const dashCustomTo = event?.theme === 'custom' ? event?.custom_gradient?.to : null;
   useEffect(() => {
-    const theme = event?.theme || 'neon';
-    document.documentElement.setAttribute('data-party-theme', theme);
-    return () => document.documentElement.removeAttribute('data-party-theme');
-  }, [event?.theme]);
+    const root = document.documentElement;
+    root.setAttribute('data-party-theme', event?.theme || 'neon');
+    if (dashCustomFrom && dashCustomTo) {
+      root.style.setProperty('--fx-accent-1', dashCustomFrom);
+      root.style.setProperty('--fx-accent-2', dashCustomTo);
+      root.style.setProperty('--fx-accent-3', dashCustomFrom);
+      root.style.setProperty('--fx-accent-ring', dashCustomTo);
+    }
+    return () => {
+      root.removeAttribute('data-party-theme');
+      ['--fx-accent-1', '--fx-accent-2', '--fx-accent-3', '--fx-accent-ring'].forEach((v) => root.style.removeProperty(v));
+    };
+  }, [event?.theme, dashCustomFrom, dashCustomTo]);
 
   const [rsvps, setRsvps] = useState(() => getRSVPs(eventId));
   const [expenses, setExpenses] = useState(() => getExpenses(eventId));
